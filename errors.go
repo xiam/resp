@@ -30,4 +30,6 @@ var (
 	ErrInvalidDelimiter  = errors.New(`resp: Failed to get limits.`)
 	ErrMessageIsTooLarge = errors.New(`resp: Message is too large.`)
 	ErrIncompleteMessage = errors.New(`resp: Message is incomplete.`)
+	ErrExpectingPointer  = errors.New(`resp: Expecting pointer value.`)
+	ErrNotSameKind       = errors.New(`resp: Destination (%s) and result (%s) are not of the same kind.`)
 )

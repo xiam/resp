@@ -22,6 +22,11 @@
 // RESP protocol encoder/decoder.
 package resp
 
+import (
+	"fmt"
+	"reflect"
+)
+
 var endOfLine = []byte{'\r', '\n'}
 
 const (
@@ -37,3 +42,47 @@ const (
 	// to 512 MB in length.
 	bulkMessageMaxLength = 512 * 1024
 )
+
+var defaultEncoder = encoder{}
+var defaultDecoder = decoder{}
+
+// Marshal returns the RESP encoding of v. At this moment, it only works with
+// string, int, []byte, nil and []interface{} types.
+func Marshal(v interface{}) ([]byte, error) {
+	switch t := v.(type) {
+	case string:
+		// Strings are not binary safe, we should use bulk type instead.
+		return defaultEncoder.encode([]byte(t))
+	}
+	return defaultEncoder.encode(v)
+}
+
+// Unmarshal parses the RESP-encoded data and stores the result in the value
+// pointed to by v. At this moment, it only works with string, int, []byte and
+// []interface{} types.
+func Unmarshal(data []byte, v interface{}) error {
+
+	var out interface{}
+	var err error
+
+	dst := reflect.ValueOf(v)
+
+	if dst.Kind() != reflect.Ptr || dst.IsNil() {
+		return ErrExpectingPointer
+	}
+
+	if out, err = defaultDecoder.decode(data); err != nil {
+		return err
+	}
+
+	outV := reflect.ValueOf(out)
+
+	// Is this a safe conversion?
+	if dst.Elem().Type().Kind() != outV.Type().Kind() {
+		return fmt.Errorf(ErrNotSameKind.Error(), dst.Elem().Type().Kind(), outV.Type().Kind())
+	}
+
+	dst.Elem().Set(outV)
+
+	return nil
+}

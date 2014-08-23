@@ -522,3 +522,88 @@ func TestEncodeNil(t *testing.T) {
 		t.Fatal(errTestFailed)
 	}
 }
+
+func TestMarshalString(t *testing.T) {
+	var buf []byte
+	var dest string
+	var err error
+
+	if buf, err = Marshal("Test subject."); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte("$13\r\nTest subject.\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+
+	if err = Unmarshal(buf, dest); err == nil {
+		t.Fatal(errErrorExpected)
+	}
+
+	if err = Unmarshal(buf, &dest); err != nil {
+		t.Fatal(err)
+	}
+
+	if dest != "Test subject." {
+		t.Fatal(err)
+	}
+
+	if buf, err = Marshal("★"); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte("$3\r\n★\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+
+	if err = Unmarshal(buf, dest); err == nil {
+		t.Fatal(errErrorExpected)
+	}
+
+	if err = Unmarshal(buf, &dest); err != nil {
+		t.Fatal(err)
+	}
+
+	if dest != "★" {
+		t.Fatal(err)
+	}
+}
+
+func TestMarshalInteger(t *testing.T) {
+	var buf []byte
+	var dest int
+	var err error
+	var wrongDest bool
+
+	if buf, err = Marshal(123); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte(":123\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+
+	if err = Unmarshal(buf, nil); err == nil {
+		t.Fatal(errErrorExpected)
+	}
+
+	if err = Unmarshal(buf, wrongDest); err == nil {
+		t.Fatal(errErrorExpected)
+	}
+
+	if err = Unmarshal(buf, &wrongDest); err == nil {
+		t.Fatal(errErrorExpected)
+	}
+
+	if err = Unmarshal(buf, dest); err == nil {
+		t.Fatal(errErrorExpected)
+	}
+
+	if err = Unmarshal(buf, &dest); err != nil {
+		t.Fatal(err)
+	}
+
+	if dest != 123 {
+		t.Fatal(err)
+	}
+}

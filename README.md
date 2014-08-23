@@ -1,6 +1,34 @@
 # github.com/xiam/resp
 
-[RESP][1] encoder/decoder. Work in progress.
+[RESP][1] encoder/decoder.
+
+## VARIABLES
+
+```
+var (
+    ErrInvalidInput      = errors.New(`resp: Invalid input.`)
+    ErrInvalidDelimiter  = errors.New(`resp: Failed to get limits.`)
+    ErrMessageIsTooLarge = errors.New(`resp: Message is too large.`)
+    ErrIncompleteMessage = errors.New(`resp: Message is incomplete.`)
+    ErrExpectingPointer  = errors.New(`resp: Expecting pointer value.`)
+    ErrNotSameKind       = errors.New(`resp: Destination (%s) and result (%s) are not of the same kind.`)
+)
+```
+
+## FUNCTIONS
+
+```
+func Marshal(v interface{}) ([]byte, error)
+    Marshal returns the RESP encoding of v. At this moment, it only works
+    with string, int, []byte, nil and []interface{} types.
+```
+
+```
+func Unmarshal(data []byte, v interface{}) error
+    Unmarshal parses the RESP-encoded data and stores the result in the
+    value pointed to by v. At this moment, it only works with string, int,
+    []byte and []interface{} types.
+```
 
 ## License
 
