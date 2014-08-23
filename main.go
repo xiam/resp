@@ -24,9 +24,15 @@ package resp
 
 import (
 	"bytes"
+	"errors"
 )
 
 var endOfLine = []byte{'\r', '\n'}
+
+const (
+	respStringByte = '+'
+	respErrorByte  = '-'
+)
 
 type decoder struct {
 }
@@ -38,7 +44,7 @@ func (self decoder) decode(in []byte) (out interface{}, err error) {
 	}
 
 	switch in[0] {
-	case '+':
+	case respStringByte:
 		var line []byte
 		var err error
 
@@ -47,6 +53,15 @@ func (self decoder) decode(in []byte) (out interface{}, err error) {
 		}
 
 		return string(line), nil
+	case respErrorByte:
+		var line []byte
+		var err error
+
+		if line, err = self.readLine(in[1:]); err != nil {
+			return nil, err
+		}
+
+		return errors.New(string(line)), nil
 	}
 
 	return nil, ErrInvalidResponse

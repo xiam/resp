@@ -62,5 +62,21 @@ func TestDecodeString(t *testing.T) {
 	if bytes.Equal([]byte(test.(string)), []byte("OK\r+NO")) == false {
 		t.Fatal(errTestFailed)
 	}
+}
 
+func TestDecodeError(t *testing.T) {
+	var test interface{}
+	var encoded []byte
+	var err error
+
+	// Simple "Error Message" error
+	encoded = []byte("-Error Message\r\n")
+
+	if test, err = respDecoder.decode(encoded); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal([]byte(test.(error).Error()), []byte("Error Message")) == false {
+		t.Fatal(errTestFailed)
+	}
 }
