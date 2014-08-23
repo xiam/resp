@@ -19,21 +19,48 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// RESP protocol encoder/decoder.
+// RESP encoder. See: http://redis.io/topics/protocol
 package resp
 
-var endOfLine = []byte{'\r', '\n'}
-
-const (
-	respStringByte  = '+'
-	respErrorByte   = '-'
-	respIntegerByte = ':'
-	respBulkByte    = '$'
-	respArrayByte   = '*'
+import (
+	"bytes"
+	"strconv"
 )
 
-const (
-	// Bulk Strings are used in order to represent a single binary safe string up
-	// to 512 MB in length.
-	bulkMessageMaxLength = 512 * 1024
+type encoder struct {
+}
+
+var (
+	encoderNil = []byte{'*', '-', '1', '\r', '\n'}
 )
+
+func (self encoder) encode(in interface{}) ([]byte, error) {
+	switch v := in.(type) {
+	case nil:
+		return encoderNil, nil
+	case string:
+		out := bytes.Join([][]byte{{respStringByte}, []byte(v), endOfLine}, nil)
+		return out, nil
+	case error:
+		out := bytes.Join([][]byte{{respErrorByte}, []byte(v.Error()), endOfLine}, nil)
+		return out, nil
+	case int:
+		out := bytes.Join([][]byte{{respIntegerByte}, []byte(strconv.Itoa(v)), endOfLine}, nil)
+		return out, nil
+	case []byte:
+		out := bytes.Join([][]byte{{respBulkByte}, []byte(strconv.Itoa(len(v))), endOfLine, v, endOfLine}, nil)
+		return out, nil
+	case []interface{}:
+		var buf bytes.Buffer
+		buf.Write(bytes.Join([][]byte{{respArrayByte}, []byte(strconv.Itoa(len(v))), endOfLine}, nil))
+		for i := range v {
+			chunk, err := self.encode(v[i])
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(chunk)
+		}
+		return buf.Bytes(), nil
+	}
+	return nil, ErrInvalidInput
+}

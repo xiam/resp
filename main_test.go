@@ -27,6 +27,7 @@ import (
 	"testing"
 )
 
+var respEncoder = encoder{}
 var respDecoder = decoder{}
 
 var (
@@ -405,5 +406,119 @@ func TestArrayWithNil(t *testing.T) {
 	if res[2].(string) != "bar" {
 		t.Fatal(errTestFailed)
 	}
+}
 
+func TestEncodeString(t *testing.T) {
+	var buf []byte
+	var err error
+
+	if buf, err = respEncoder.encode("Foo"); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte("+Foo\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+}
+
+func TestEncodeError(t *testing.T) {
+	var buf []byte
+	var err error
+
+	if buf, err = respEncoder.encode(errors.New("Fatal error")); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte("-Fatal error\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+}
+
+func TestEncodeInteger(t *testing.T) {
+	var buf []byte
+	var err error
+
+	if buf, err = respEncoder.encode(123); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte(":123\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+}
+
+func TestEncodeBulk(t *testing.T) {
+	var buf []byte
+	var err error
+
+	if buf, err = respEncoder.encode([]byte("♥")); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte("$3\r\n♥\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+}
+
+func TestEncodeArray(t *testing.T) {
+	var buf []byte
+	var err error
+
+	if buf, err = respEncoder.encode([]interface{}{"Foo", "Bar"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte("*2\r\n+Foo\r\n+Bar\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+}
+
+func TestEncodeMixedArray(t *testing.T) {
+	var buf []byte
+	var err error
+
+	mixed := []interface{}{
+		[]interface{}{
+			1, 2, 3,
+		},
+		[]interface{}{
+			[]byte("Foo"),
+			errors.New("Bar"),
+			"Baz",
+		},
+	}
+
+	if buf, err = respEncoder.encode(mixed); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte("*2\r\n*3\r\n:1\r\n:2\r\n:3\r\n*3\r\n$3\r\nFoo\r\n-Bar\r\n+Baz\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+}
+
+func TestEncodeZeroArray(t *testing.T) {
+	var buf []byte
+	var err error
+
+	if buf, err = respEncoder.encode([]interface{}{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte("*0\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+}
+
+func TestEncodeNil(t *testing.T) {
+	var buf []byte
+	var err error
+
+	if buf, err = respEncoder.encode(nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte("*-1\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
 }
