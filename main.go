@@ -25,13 +25,22 @@ package resp
 import (
 	"bytes"
 	"errors"
+	"strconv"
 )
 
 var endOfLine = []byte{'\r', '\n'}
 
 const (
-	respStringByte = '+'
-	respErrorByte  = '-'
+	respStringByte  = '+'
+	respErrorByte   = '-'
+	respIntegerByte = ':'
+	respBulkByte    = '$'
+)
+
+const (
+	// Bulk Strings are used in order to represent a single binary safe string up
+	// to 512 MB in length.
+	bulkMessageMaxLength = 512 * 1024
 )
 
 type decoder struct {
@@ -62,6 +71,53 @@ func (self decoder) decode(in []byte) (out interface{}, err error) {
 		}
 
 		return errors.New(string(line)), nil
+	case respIntegerByte:
+		var line []byte
+		var err error
+		var res int
+
+		if line, err = self.readLine(in[1:]); err != nil {
+			return nil, err
+		}
+
+		if res, err = strconv.Atoi(string(line)); err != nil {
+			return nil, err
+		}
+
+		return res, nil
+
+	case respBulkByte:
+		// Getting string length.
+		var line []byte
+		var err error
+		var msgLen, startOffset int
+
+		if line, err = self.readLine(in[1:]); err != nil {
+			return nil, err
+		}
+
+		if msgLen, err = strconv.Atoi(string(line)); err != nil {
+			return nil, err
+		}
+
+		if msgLen > bulkMessageMaxLength {
+			return nil, ErrMessageIsTooLarge
+		}
+
+		if msgLen < 0 {
+			// RESP Bulk Strings can also be used in order to signal non-existence of
+			// a value.
+			return nil, nil
+		}
+
+		startOffset = 1 + len(line) + 2 // type + number + \r\n
+
+		if len(in) >= (startOffset + msgLen + 2) { // message start + message length + \r\n
+			out := in[startOffset : startOffset+msgLen]
+			return string(out), nil
+		} else {
+			return nil, ErrInvalidResponse
+		}
 	}
 
 	return nil, ErrInvalidResponse
