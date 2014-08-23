@@ -2,20 +2,15 @@
 
 [RESP][1] encoder/decoder.
 
-## VARIABLES
+## Installation
 
 ```
-var (
-    ErrInvalidInput      = errors.New(`resp: Invalid input.`)
-    ErrInvalidDelimiter  = errors.New(`resp: Failed to get limits.`)
-    ErrMessageIsTooLarge = errors.New(`resp: Message is too large.`)
-    ErrIncompleteMessage = errors.New(`resp: Message is incomplete.`)
-    ErrExpectingPointer  = errors.New(`resp: Expecting pointer value.`)
-    ErrNotSameKind       = errors.New(`resp: Destination (%s) and result (%s) are not of the same kind.`)
-)
+go get -u github.com/xiam/resp
 ```
 
-## FUNCTIONS
+## Functions
+
+### Marshal
 
 ```
 func Marshal(v interface{}) ([]byte, error)
@@ -23,11 +18,28 @@ func Marshal(v interface{}) ([]byte, error)
     with string, int, []byte, nil and []interface{} types.
 ```
 
+Example:
+
+```
+buf, err = resp.Marshal("Foo")
+// -> $3\r\nFoo\r\n
+```
+
+### Unmarshal
+
 ```
 func Unmarshal(data []byte, v interface{}) error
     Unmarshal parses the RESP-encoded data and stores the result in the
     value pointed to by v. At this moment, it only works with string, int,
     []byte and []interface{} types.
+```
+
+Example:
+
+```
+var dest string
+err = resp.Unmarshal([]byte("$3\r\nFoo\r\n"), &dest)
+// -> "Foo"
 ```
 
 ## License
