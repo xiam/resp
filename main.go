@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2014 José Carlos Nieto, https://menteslibres.net/xiam
+// Copyright (c) 2014 José Carlos Nieto, https://menteslibres.net/xiam
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -35,6 +35,7 @@ const (
 	respErrorByte   = '-'
 	respIntegerByte = ':'
 	respBulkByte    = '$'
+	respArrayByte   = '*'
 )
 
 const (
@@ -46,87 +47,114 @@ const (
 type decoder struct {
 }
 
-func (self decoder) decode(in []byte) (out interface{}, err error) {
+func (self decoder) next(in []byte) (out interface{}, n int, err error) {
 
-	if len(in) == 0 {
-		return nil, ErrInvalidResponse
+	if len(in) < 1 {
+		return nil, 0, ErrInvalidInput
 	}
 
+	var line []byte
+
+	if line, n, err = self.readLine(in[1:]); err != nil {
+		return nil, 0, err
+	}
+
+	n = n + 1 // line length + type byte
+
 	switch in[0] {
+
 	case respStringByte:
-		var line []byte
-		var err error
+		return string(line), n, nil
 
-		if line, err = self.readLine(in[1:]); err != nil {
-			return nil, err
-		}
-
-		return string(line), nil
 	case respErrorByte:
-		var line []byte
-		var err error
+		return errors.New(string(line)), n, nil
 
-		if line, err = self.readLine(in[1:]); err != nil {
-			return nil, err
-		}
-
-		return errors.New(string(line)), nil
 	case respIntegerByte:
-		var line []byte
-		var err error
 		var res int
-
-		if line, err = self.readLine(in[1:]); err != nil {
-			return nil, err
-		}
-
 		if res, err = strconv.Atoi(string(line)); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-
-		return res, nil
+		return res, n, nil
 
 	case respBulkByte:
 		// Getting string length.
-		var line []byte
-		var err error
-		var msgLen, startOffset int
-
-		if line, err = self.readLine(in[1:]); err != nil {
-			return nil, err
-		}
+		var msgLen, offset int
 
 		if msgLen, err = strconv.Atoi(string(line)); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		if msgLen > bulkMessageMaxLength {
-			return nil, ErrMessageIsTooLarge
+			return nil, 0, ErrMessageIsTooLarge
 		}
 
 		if msgLen < 0 {
 			// RESP Bulk Strings can also be used in order to signal non-existence of
 			// a value.
-			return nil, nil
+			return nil, n, nil
 		}
 
-		startOffset = 1 + len(line) + 2 // type + number + \r\n
+		offset = 1 + len(line) + 2 // type + number + \r\n
 
-		if len(in) >= (startOffset + msgLen + 2) { // message start + message length + \r\n
-			out := in[startOffset : startOffset+msgLen]
-			return string(out), nil
+		if len(in) >= (offset + msgLen + 2) { // message start + message length + \r\n
+			out := in[offset : offset+msgLen]
+			return string(out), offset + msgLen + 2, nil
 		} else {
-			return nil, ErrInvalidResponse
+			return nil, 0, ErrInvalidInput
 		}
+	case respArrayByte:
+		// Getting string length.
+		var arrLen, offset int
+		var res []interface{}
+
+		if arrLen, err = strconv.Atoi(string(line)); err != nil {
+			return nil, 0, err
+		}
+
+		if arrLen < 0 {
+			// The concept of Null Array exists as well, and is an alternative way to
+			// specify a Null value (usually the Null Bulk String is used, but for
+			// historical reasons we have two formats).
+			return nil, n, nil
+		}
+
+		offset = 1 + len(line) + 2 // type + number + \r\n
+
+		for i := 0; i < arrLen; i++ {
+
+			if len(in) < offset {
+				return nil, 0, ErrIncompleteMessage
+			}
+
+			out, n, err := self.next(in[offset:])
+
+			if err != nil {
+				return nil, 0, err
+			}
+
+			res = append(res, out)
+
+			offset = offset + n
+		}
+
+		return res, offset, nil
 	}
 
-	return nil, ErrInvalidResponse
+	return nil, -1, ErrInvalidInput
 }
 
-func (self decoder) readLine(in []byte) (out []byte, err error) {
+func (self decoder) decode(in []byte) (out interface{}, err error) {
+	out, _, err = self.next(in)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (self decoder) readLine(in []byte) (out []byte, n int, err error) {
 	i := bytes.Index(in, endOfLine)
 	if i < 0 {
-		return nil, ErrInvalidDelimiter
+		return nil, 0, ErrInvalidDelimiter
 	}
-	return in[0:i], nil
+	return in[0:i], i + 2, nil // header + content + \r\n
 }
