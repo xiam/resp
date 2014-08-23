@@ -8,9 +8,9 @@
 go get -u github.com/xiam/resp
 ```
 
-## Functions
+## Usage
 
-### resp.Marshal(interface{}) ([]byte, error)
+### Encoding
 
 ```
 func Marshal(v interface{}) ([]byte, error)
@@ -25,7 +25,7 @@ buf, err = resp.Marshal("Foo")
 // -> $3\r\nFoo\r\n
 ```
 
-### resp.Unmarshal([]byte, interface{}) error
+### Decoding
 
 ```
 func Unmarshal(data []byte, v interface{}) error
