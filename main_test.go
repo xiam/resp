@@ -66,7 +66,7 @@ func TestReadLine(t *testing.T) {
 }
 
 func TestDecodeString(t *testing.T) {
-	var test interface{}
+	var test *Message
 	var encoded []byte
 	var err error
 
@@ -77,7 +77,7 @@ func TestDecodeString(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal([]byte(test.(string)), []byte("OK")) == false {
+	if test.Status != "OK" {
 		t.Fatal(errTestFailed)
 	}
 
@@ -88,7 +88,7 @@ func TestDecodeString(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal([]byte(test.(string)), []byte("OK")) == false {
+	if test.Status != "OK" {
 		t.Fatal(errTestFailed)
 	}
 
@@ -99,13 +99,13 @@ func TestDecodeString(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal([]byte(test.(string)), []byte("OK\r+NO")) == false {
+	if test.Status != "OK\r+NO" {
 		t.Fatal(errTestFailed)
 	}
 }
 
 func TestDecodeError(t *testing.T) {
-	var test interface{}
+	var test *Message
 	var encoded []byte
 	var err error
 
@@ -116,13 +116,13 @@ func TestDecodeError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal([]byte(test.(error).Error()), []byte("Error Message")) == false {
+	if test.Error.Error() != "Error Message" {
 		t.Fatal(errTestFailed)
 	}
 }
 
 func TestDecodeInteger(t *testing.T) {
-	var test interface{}
+	var test *Message
 	var encoded []byte
 	var err error
 
@@ -133,7 +133,7 @@ func TestDecodeInteger(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if test.(int) != 123 {
+	if test.Integer != 123 {
 		t.Fatal(errTestFailed)
 	}
 
@@ -144,7 +144,7 @@ func TestDecodeInteger(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if test.(int) != -123 {
+	if test.Integer != -123 {
 		t.Fatal(errTestFailed)
 	}
 
@@ -173,7 +173,7 @@ func TestDecodeInteger(t *testing.T) {
 }
 
 func TestDecodeBulk(t *testing.T) {
-	var test interface{}
+	var test *Message
 	var err error
 
 	// "foobar" string.
@@ -181,7 +181,7 @@ func TestDecodeBulk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal([]byte(test.(string)), []byte("foobar")) == false {
+	if bytes.Equal(test.Bytes, []byte("foobar")) == false {
 		t.Fatal(errTestFailed)
 	}
 
@@ -190,7 +190,7 @@ func TestDecodeBulk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal([]byte(test.(string)), []byte("foo\r\nbar")) == false {
+	if bytes.Equal(test.Bytes, []byte("foo\r\nbar")) == false {
 		t.Fatal(errTestFailed)
 	}
 
@@ -199,7 +199,7 @@ func TestDecodeBulk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal([]byte(test.(string)), []byte("")) == false {
+	if bytes.Equal(test.Bytes, []byte("")) == false {
 		t.Fatal(errTestFailed)
 	}
 
@@ -208,7 +208,7 @@ func TestDecodeBulk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if test != nil {
+	if test.IsNil != true {
 		t.Fatal(errTestFailed)
 	}
 
@@ -217,7 +217,7 @@ func TestDecodeBulk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal([]byte(test.(string)), []byte("✓")) == false {
+	if bytes.Equal(test.Bytes, []byte("✓")) == false {
 		t.Fatal(errTestFailed)
 	}
 
@@ -233,7 +233,7 @@ func TestDecodeBulk(t *testing.T) {
 }
 
 func TestArrayDecode(t *testing.T) {
-	var test interface{}
+	var test *Message
 	var err error
 
 	// Array with zero elements.
@@ -241,7 +241,7 @@ func TestArrayDecode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(test.([]interface{})) > 0 {
+	if len(test.Array) > 0 {
 		t.Fatal(errTestFailed)
 	}
 
@@ -250,13 +250,13 @@ func TestArrayDecode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if test != nil {
+	if test.IsNil == false {
 		t.Fatal(errTestFailed)
 	}
 }
 
 func TestArrayDecodeTwoElements(t *testing.T) {
-	var test interface{}
+	var test *Message
 	var err error
 
 	// Array with two elements.
@@ -264,23 +264,21 @@ func TestArrayDecodeTwoElements(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res := test.([]interface{})
-
-	if len(res) != 2 {
+	if len(test.Array) != 2 {
 		t.Fatal(errTestFailed)
 	}
 
-	if res[0].(string) != "foo" {
+	if string(test.Array[0].Bytes) != "foo" {
 		t.Fatal(errTestFailed)
 	}
 
-	if res[1].(string) != "bar" {
+	if string(test.Array[1].Bytes) != "bar" {
 		t.Fatal(errTestFailed)
 	}
 }
 
 func TestArrayDecodeThreeIntegers(t *testing.T) {
-	var test interface{}
+	var test *Message
 	var err error
 
 	// Array of three integers.
@@ -288,27 +286,27 @@ func TestArrayDecodeThreeIntegers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res := test.([]interface{})
+	res := test.Array
 
 	if len(res) != 3 {
 		t.Fatal(errTestFailed)
 	}
 
-	if res[0].(int) != 1 {
+	if res[0].Integer != 1 {
 		t.Fatal(errTestFailed)
 	}
 
-	if res[1].(int) != 2 {
+	if res[1].Integer != 2 {
 		t.Fatal(errTestFailed)
 	}
 
-	if res[2].(int) != 3 {
+	if res[2].Integer != 3 {
 		t.Fatal(errTestFailed)
 	}
 }
 
 func TestArrayMixed(t *testing.T) {
-	var test interface{}
+	var test *Message
 	var err error
 
 	// Array of four integers and one string.
@@ -316,35 +314,35 @@ func TestArrayMixed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res := test.([]interface{})
+	res := test.Array
 
 	if len(res) != 5 {
 		t.Fatal(errTestFailed)
 	}
 
-	if res[0].(int) != 1 {
+	if res[0].Integer != 1 {
 		t.Fatal(errTestFailed)
 	}
 
-	if res[1].(int) != 2 {
+	if res[1].Integer != 2 {
 		t.Fatal(errTestFailed)
 	}
 
-	if res[2].(int) != 3 {
+	if res[2].Integer != 3 {
 		t.Fatal(errTestFailed)
 	}
 
-	if res[3].(int) != 4 {
+	if res[3].Integer != 4 {
 		t.Fatal(errTestFailed)
 	}
 
-	if res[4].(string) != "foobar" {
+	if string(res[4].Bytes) != "foobar" {
 		t.Fatal(errTestFailed)
 	}
 }
 
 func TestArrayNested(t *testing.T) {
-	var test interface{}
+	var test *Message
 	var err error
 
 	// Array of two arrays.
@@ -352,38 +350,38 @@ func TestArrayNested(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res := test.([]interface{})
+	res := test.Array
 
 	if len(res) != 2 {
 		t.Fatal(errTestFailed)
 	}
 
-	arr1 := res[0].([]interface{})
-	arr2 := res[1].([]interface{})
+	arr1 := res[0].Array
+	arr2 := res[1].Array
 
-	if arr1[0].(int) != 1 {
+	if arr1[0].Integer != 1 {
 		t.Fatal(errTestFailed)
 	}
 
-	if arr1[1].(int) != 2 {
+	if arr1[1].Integer != 2 {
 		t.Fatal(errTestFailed)
 	}
 
-	if arr1[2].(int) != 3 {
+	if arr1[2].Integer != 3 {
 		t.Fatal(errTestFailed)
 	}
 
-	if arr2[0].(string) != "Foo" {
+	if arr2[0].Status != "Foo" {
 		t.Fatal(errTestFailed)
 	}
-	if arr2[1].(error).Error() != "Bar" {
+	if arr2[1].Error.Error() != "Bar" {
 		t.Fatal(errTestFailed)
 	}
 
 }
 
 func TestArrayWithNil(t *testing.T) {
-	var test interface{}
+	var test *Message
 	var err error
 
 	// Array of two arrays.
@@ -391,19 +389,19 @@ func TestArrayWithNil(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res := test.([]interface{})
+	res := test.Array
 
 	if len(res) != 3 {
 		t.Fatal(errTestFailed)
 	}
 
-	if res[0].(string) != "foo" {
+	if string(res[0].Bytes) != "foo" {
 		t.Fatal(errTestFailed)
 	}
-	if res[1] != nil {
+	if res[1].IsNil != true {
 		t.Fatal(errTestFailed)
 	}
-	if res[2].(string) != "bar" {
+	if string(res[2].Bytes) != "bar" {
 		t.Fatal(errTestFailed)
 	}
 }
@@ -573,7 +571,7 @@ func TestMarshalInteger(t *testing.T) {
 	var buf []byte
 	var dest int
 	var err error
-	var wrongDest bool
+	var wrongDest byte
 
 	if buf, err = Marshal(123); err != nil {
 		t.Fatal(err)
@@ -605,5 +603,76 @@ func TestMarshalInteger(t *testing.T) {
 
 	if dest != 123 {
 		t.Fatal(err)
+	}
+}
+
+func TestMarshalArray(t *testing.T) {
+	var buf []byte
+	var dest []int
+	var err error
+	var wrongDest bool
+
+	if buf, err = Marshal([]interface{}{1, 2, 3, 4, 5, 6}); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte("*6\r\n:1\r\n:2\r\n:3\r\n:4\r\n:5\r\n:6\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+
+	if err = Unmarshal(buf, nil); err == nil {
+		t.Fatal(errErrorExpected)
+	}
+
+	if err = Unmarshal(buf, wrongDest); err == nil {
+		t.Fatal(errErrorExpected)
+	}
+
+	if err = Unmarshal(buf, &wrongDest); err == nil {
+		t.Fatal(errErrorExpected)
+	}
+
+	if err = Unmarshal(buf, dest); err == nil {
+		t.Fatal(errErrorExpected)
+	}
+
+	if err = Unmarshal(buf, &dest); err != nil {
+		t.Fatal(err)
+	}
+
+}
+
+func TestMarshalUnmarshal(t *testing.T) {
+	var buf []byte
+	var err error
+
+	var destInt int
+	var destString string
+
+	// Marshaling an integer.
+	if buf, err = Marshal(123456); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte(":123456\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+
+	// Attempt to decode this integer into an integer.
+	if err = Unmarshal(buf, &destInt); err != nil {
+		t.Fatal(err)
+	}
+
+	if destInt != 123456 {
+		t.Fatal()
+	}
+
+	// Attempt to decode this integer into an string.
+	if err = Unmarshal(buf, &destString); err != nil {
+		t.Fatal(err)
+	}
+
+	if destString != "123456" {
+		t.Fatal()
 	}
 }

@@ -31,103 +31,127 @@ import (
 type decoder struct {
 }
 
-func (self decoder) next(in []byte) (out interface{}, n int, err error) {
+func (self decoder) next(in []byte) (out *Message, n int, err error) {
 
 	if len(in) < 1 {
-		return nil, 0, ErrInvalidInput
+		err = ErrInvalidInput
+		return
 	}
 
 	var line []byte
 
 	if line, n, err = self.readLine(in[1:]); err != nil {
-		return nil, 0, err
+		return
 	}
 
 	n = n + 1 // line length + type byte
 
 	switch in[0] {
 
-	case respStringByte:
-		return string(line), n, nil
+	case StringHeader:
+		out = new(Message)
+		out.Type = in[0]
+		out.Status = string(line)
+		return
 
-	case respErrorByte:
-		return errors.New(string(line)), n, nil
+	case ErrorHeader:
+		out = new(Message)
+		out.Type = in[0]
+		out.Error = errors.New(string(line))
+		return
 
-	case respIntegerByte:
-		var res int
-		if res, err = strconv.Atoi(string(line)); err != nil {
-			return nil, 0, err
-		}
-		return res, n, nil
+	case IntegerHeader:
+		out = new(Message)
+		out.Type = in[0]
+		out.Integer, err = strconv.Atoi(string(line))
+		return
 
-	case respBulkByte:
+	case BulkHeader:
 		// Getting string length.
 		var msgLen, offset int
 
 		if msgLen, err = strconv.Atoi(string(line)); err != nil {
-			return nil, 0, err
+			return
 		}
 
 		if msgLen > bulkMessageMaxLength {
-			return nil, 0, ErrMessageIsTooLarge
+			err = ErrMessageIsTooLarge
+			return
 		}
 
 		if msgLen < 0 {
 			// RESP Bulk Strings can also be used in order to signal non-existence of
 			// a value.
-			return nil, n, nil
+			out = new(Message)
+			out.Type = in[0]
+			out.IsNil = true
+			return
 		}
 
 		offset = 1 + len(line) + 2 // type + number + \r\n
 
 		if len(in) >= (offset + msgLen + 2) { // message start + message length + \r\n
-			out := in[offset : offset+msgLen]
-			return string(out), offset + msgLen + 2, nil
+			out = new(Message)
+			out.Type = in[0]
+			out.Bytes = in[offset : offset+msgLen]
+			n = offset + msgLen + 2
 		} else {
-			return nil, 0, ErrInvalidInput
+			err = ErrInvalidInput
 		}
-	case respArrayByte:
+
+		return
+
+	case ArrayHeader:
 		// Getting string length.
-		var arrLen, offset int
-		var res []interface{}
+		var arrLen int
 
 		if arrLen, err = strconv.Atoi(string(line)); err != nil {
-			return nil, 0, err
+			return
 		}
 
 		if arrLen < 0 {
 			// The concept of Null Array exists as well, and is an alternative way to
 			// specify a Null value (usually the Null Bulk String is used, but for
 			// historical reasons we have two formats).
-			return nil, n, nil
+			out = new(Message)
+			out.Type = in[0]
+			out.IsNil = true
+			return
 		}
 
-		offset = 1 + len(line) + 2 // type + number + \r\n
+		n = 1 + len(line) + 2 // type + number + \r\n
+
+		if len(in) < n {
+			err = ErrIncompleteMessage
+			return
+		}
+
+		out = new(Message)
+		out.Type = in[0]
+		out.Array = make([]*Message, arrLen)
 
 		for i := 0; i < arrLen; i++ {
 
-			if len(in) < offset {
-				return nil, 0, ErrIncompleteMessage
+			nestedOut, nestedN, nestedErr := self.next(in[n:])
+
+			if nestedErr != nil {
+				return nil, 0, nestedErr
 			}
 
-			out, n, err := self.next(in[offset:])
+			out.Array[i] = nestedOut
 
-			if err != nil {
-				return nil, 0, err
-			}
-
-			res = append(res, out)
-
-			offset = offset + n
+			n = n + nestedN
 		}
 
-		return res, offset, nil
+		return
 	}
 
-	return nil, -1, ErrInvalidInput
+	err, n = ErrInvalidInput, -1
+
+	return
 }
 
-func (self decoder) decode(in []byte) (out interface{}, err error) {
+func (self decoder) decode(in []byte) (out *Message, err error) {
 	out, _, err = self.next(in)
 	if err != nil {
 		return nil, err

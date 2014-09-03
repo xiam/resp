@@ -23,18 +23,35 @@
 package resp
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 )
 
 var endOfLine = []byte{'\r', '\n'}
 
+var (
+	typeErr     = reflect.TypeOf(errors.New(""))
+	typeMessage = reflect.TypeOf(new(Message))
+)
+
+type Message struct {
+	Error   error
+	Integer int
+	Bytes   []byte
+	Status  string
+	Array   []*Message
+	IsNil   bool
+	Type    byte
+}
+
 const (
-	respStringByte  = '+'
-	respErrorByte   = '-'
-	respIntegerByte = ':'
-	respBulkByte    = '$'
-	respArrayByte   = '*'
+	StringHeader  = '+'
+	ErrorHeader   = '-'
+	IntegerHeader = ':'
+	BulkHeader    = '$'
+	ArrayHeader   = '*'
 )
 
 const (
@@ -45,6 +62,22 @@ const (
 
 var defaultEncoder = encoder{}
 var defaultDecoder = decoder{}
+
+func byteToTypeName(c byte) string {
+	switch c {
+	case StringHeader:
+		return `status`
+	case ErrorHeader:
+		return `error`
+	case IntegerHeader:
+		return `integer`
+	case BulkHeader:
+		return `bulk`
+	case ArrayHeader:
+		return `array`
+	}
+	return `unknown`
+}
 
 // Marshal returns the RESP encoding of v. At this moment, it only works with
 // string, int, []byte, nil and []interface{} types.
@@ -61,8 +94,7 @@ func Marshal(v interface{}) ([]byte, error) {
 // pointed to by v. At this moment, it only works with string, int, []byte and
 // []interface{} types.
 func Unmarshal(data []byte, v interface{}) error {
-
-	var out interface{}
+	var out *Message
 	var err error
 
 	dst := reflect.ValueOf(v)
@@ -75,14 +107,98 @@ func Unmarshal(data []byte, v interface{}) error {
 		return err
 	}
 
-	outV := reflect.ValueOf(out)
+	return redisMessageToType(dst.Elem(), out)
+}
 
-	// Is this a safe conversion?
-	if dst.Elem().Type().Kind() != outV.Type().Kind() {
-		return fmt.Errorf(ErrNotSameKind.Error(), dst.Elem().Type().Kind(), outV.Type().Kind())
+func redisMessageToType(dst reflect.Value, out *Message) error {
+
+	dstKind := dst.Type().Kind()
+
+	if dstKind == typeMessage.Kind() {
+		// Do we want to unmarshal the whole message?
+		dst.Set(reflect.ValueOf(out))
+		return nil
 	}
 
-	dst.Elem().Set(outV)
+	// User wants a conversion.
+	switch out.Type {
+	case StringHeader:
+		switch dstKind {
+		// string -> string.
+		case reflect.String:
+			dst.Set(reflect.ValueOf(out.Status))
+			return nil
+		}
+	case ErrorHeader:
+		switch dstKind {
+		// error -> string
+		case reflect.String:
+			dst.Set(reflect.ValueOf(out.Error.Error()))
+			return nil
+		// error -> serror
+		case typeErr.Kind():
+			dst.Set(reflect.ValueOf(out.Error))
+			return nil
+		}
+	case IntegerHeader:
+		switch dstKind {
+		case reflect.Int:
+			// integer -> integer.
+			dst.Set(reflect.ValueOf(out.Integer))
+			return nil
+		case reflect.String:
+			// integer -> string.
+			dst.Set(reflect.ValueOf(strconv.Itoa(out.Integer)))
+			return nil
+		case reflect.Bool:
+			// integer -> bool.
+			if out.Integer == 0 {
+				dst.Set(reflect.ValueOf(false))
+			} else {
+				dst.Set(reflect.ValueOf(true))
+			}
+			return nil
+		}
+	case BulkHeader:
+		if out.IsNil {
+			dst.Set(reflect.Zero(dst.Type()))
+			return nil
+		}
+		switch dstKind {
+		case reflect.String:
+			// []byte -> string
+			dst.Set(reflect.ValueOf(string(out.Bytes)))
+			return nil
+		case reflect.Slice:
+			// []byte -> []byte
+			dst.Set(reflect.ValueOf(out.Bytes))
+			return nil
+		}
+	case ArrayHeader:
+		if out.IsNil {
+			dst.Set(reflect.Zero(dst.Type()))
+			return nil
+		}
+		switch dstKind {
+		// slice -> slice
+		case reflect.Slice:
+			var err error
+			var elements reflect.Value
+			total := len(out.Array)
 
-	return nil
+			elements = reflect.MakeSlice(dst.Type(), total, total)
+
+			for i := 0; i < total; i++ {
+				if err = redisMessageToType(elements.Index(i), out.Array[i]); err != nil {
+					return nil
+				}
+			}
+
+			dst.Set(elements)
+
+			return nil
+		}
+	}
+
+	return fmt.Errorf(ErrUnsupportedConversion.Error(), byteToTypeName(out.Type), dstKind)
 }

@@ -26,10 +26,10 @@ import (
 )
 
 var (
-	ErrInvalidInput      = errors.New(`resp: Invalid input.`)
-	ErrInvalidDelimiter  = errors.New(`resp: Failed to get limits.`)
-	ErrMessageIsTooLarge = errors.New(`resp: Message is too large.`)
-	ErrIncompleteMessage = errors.New(`resp: Message is incomplete.`)
-	ErrExpectingPointer  = errors.New(`resp: Expecting pointer value.`)
-	ErrNotSameKind       = errors.New(`resp: Destination (%s) and result (%s) are not of the same kind.`)
+	ErrInvalidInput          = errors.New(`resp: Invalid input.`)
+	ErrInvalidDelimiter      = errors.New(`resp: Failed to get limits.`)
+	ErrMessageIsTooLarge     = errors.New(`resp: Message is too large.`)
+	ErrIncompleteMessage     = errors.New(`resp: Message is incomplete.`)
+	ErrExpectingPointer      = errors.New(`resp: Expecting pointer value.`)
+	ErrUnsupportedConversion = errors.New(`resp: Unsupported conversion: %s to %s.`)
 )
