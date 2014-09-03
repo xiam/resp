@@ -112,6 +112,11 @@ func Unmarshal(data []byte, v interface{}) error {
 
 func redisMessageToType(dst reflect.Value, out *Message) error {
 
+	if out.IsNil {
+		dst.Set(reflect.Zero(dst.Type()))
+		return ErrMessageIsNil
+	}
+
 	dstKind := dst.Type().Kind()
 
 	if dstKind == typeMessage.Kind() {
@@ -160,10 +165,6 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 			return nil
 		}
 	case BulkHeader:
-		if out.IsNil {
-			dst.Set(reflect.Zero(dst.Type()))
-			return nil
-		}
 		switch dstKind {
 		case reflect.String:
 			// []byte -> string
@@ -175,10 +176,6 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 			return nil
 		}
 	case ArrayHeader:
-		if out.IsNil {
-			dst.Set(reflect.Zero(dst.Type()))
-			return nil
-		}
 		switch dstKind {
 		// slice -> slice
 		case reflect.Slice:
@@ -190,7 +187,9 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 
 			for i := 0; i < total; i++ {
 				if err = redisMessageToType(elements.Index(i), out.Array[i]); err != nil {
-					return nil
+					if err != ErrMessageIsNil {
+						return err
+					}
 				}
 			}
 

@@ -32,4 +32,5 @@ var (
 	ErrIncompleteMessage     = errors.New(`resp: Message is incomplete.`)
 	ErrExpectingPointer      = errors.New(`resp: Expecting pointer value.`)
 	ErrUnsupportedConversion = errors.New(`resp: Unsupported conversion: %s to %s.`)
+	ErrMessageIsNil          = errors.New(`resp: Message is nil.`)
 )
