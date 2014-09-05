@@ -516,7 +516,7 @@ func TestEncodeNil(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal(buf, []byte("*-1\r\n")) == false {
+	if bytes.Equal(buf, []byte("$-1\r\n")) == false {
 		t.Fatal(errTestFailed)
 	}
 }
