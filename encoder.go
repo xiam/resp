@@ -31,7 +31,7 @@ type encoder struct {
 }
 
 var (
-	encoderNil = []byte{'*', '-', '1', '\r', '\n'}
+	encoderNil = []byte{'$', '-', '1', '\r', '\n'}
 )
 
 func (self encoder) encode(in interface{}) ([]byte, error) {
