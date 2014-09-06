@@ -133,6 +133,9 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 		case reflect.String:
 			dst.Set(reflect.ValueOf(out.Status))
 			return nil
+		case reflect.Interface:
+			dst.Set(reflect.ValueOf(out))
+			return nil
 		}
 	case ErrorHeader:
 		switch dstKind {
@@ -143,6 +146,9 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 		// error -> serror
 		case typeErr.Kind():
 			dst.Set(reflect.ValueOf(out.Error))
+			return nil
+		case reflect.Interface:
+			dst.Set(reflect.ValueOf(out))
 			return nil
 		}
 	case IntegerHeader:
@@ -167,6 +173,9 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 				dst.Set(reflect.ValueOf(true))
 			}
 			return nil
+		case reflect.Interface:
+			dst.Set(reflect.ValueOf(out))
+			return nil
 		}
 	case BulkHeader:
 		switch dstKind {
@@ -187,6 +196,9 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 			// []byte -> int64
 			n, _ := strconv.Atoi(string(out.Bytes))
 			dst.Set(reflect.ValueOf(int64(n)))
+			return nil
+		case reflect.Interface:
+			dst.Set(reflect.ValueOf(out))
 			return nil
 		}
 	case ArrayHeader:
