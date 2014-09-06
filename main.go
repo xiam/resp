@@ -151,6 +151,10 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 			// integer -> integer.
 			dst.Set(reflect.ValueOf(out.Integer))
 			return nil
+		case reflect.Int64:
+			// integer -> integer64.
+			dst.Set(reflect.ValueOf(int64(out.Integer)))
+			return nil
 		case reflect.String:
 			// integer -> string.
 			dst.Set(reflect.ValueOf(strconv.Itoa(out.Integer)))
@@ -173,6 +177,16 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 		case reflect.Slice:
 			// []byte -> []byte
 			dst.Set(reflect.ValueOf(out.Bytes))
+			return nil
+		case reflect.Int:
+			// []byte -> int
+			n, _ := strconv.Atoi(string(out.Bytes))
+			dst.Set(reflect.ValueOf(n))
+			return nil
+		case reflect.Int64:
+			// []byte -> int64
+			n, _ := strconv.Atoi(string(out.Bytes))
+			dst.Set(reflect.ValueOf(int64(n)))
 			return nil
 		}
 	case ArrayHeader:
