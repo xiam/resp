@@ -203,6 +203,25 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 		}
 	case ArrayHeader:
 		switch dstKind {
+		// slice -> interface
+		case reflect.Interface:
+			var err error
+			var elements reflect.Value
+			total := len(out.Array)
+
+			elements = reflect.MakeSlice(reflect.TypeOf([]interface{}{}), total, total)
+
+			for i := 0; i < total; i++ {
+				if err = redisMessageToType(elements.Index(i), out.Array[i]); err != nil {
+					if err != ErrMessageIsNil {
+						return err
+					}
+				}
+			}
+
+			dst.Set(elements)
+
+			return nil
 		// slice -> slice
 		case reflect.Slice:
 			var err error
