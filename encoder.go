@@ -50,6 +50,39 @@ func (self encoder) encode(in interface{}) ([]byte, error) {
 	case []byte:
 		out := bytes.Join([][]byte{{BulkHeader}, []byte(strconv.Itoa(len(v))), endOfLine, v, endOfLine}, nil)
 		return out, nil
+	case [][]byte:
+		var buf bytes.Buffer
+		buf.Write(bytes.Join([][]byte{{ArrayHeader}, []byte(strconv.Itoa(len(v))), endOfLine}, nil))
+		for i := range v {
+			chunk, err := self.encode(v[i])
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(chunk)
+		}
+		return buf.Bytes(), nil
+	case []string:
+		var buf bytes.Buffer
+		buf.Write(bytes.Join([][]byte{{ArrayHeader}, []byte(strconv.Itoa(len(v))), endOfLine}, nil))
+		for i := range v {
+			chunk, err := self.encode(v[i])
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(chunk)
+		}
+		return buf.Bytes(), nil
+	case []int:
+		var buf bytes.Buffer
+		buf.Write(bytes.Join([][]byte{{ArrayHeader}, []byte(strconv.Itoa(len(v))), endOfLine}, nil))
+		for i := range v {
+			chunk, err := self.encode(v[i])
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(chunk)
+		}
+		return buf.Bytes(), nil
 	case []interface{}:
 		var buf bytes.Buffer
 		buf.Write(bytes.Join([][]byte{{ArrayHeader}, []byte(strconv.Itoa(len(v))), endOfLine}, nil))
