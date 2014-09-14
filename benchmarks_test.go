@@ -29,7 +29,7 @@ import (
 
 var (
 	benchmarkString       = "More than a woman."
-	benchmarkBytes        = "More than a woman to me."
+	benchmarkBytes        = []byte("More than a woman to me.")
 	benchmarkInteger      = 1234567890
 	benchmarkArrayString  = []string{"fanny", "be", "tender", "with", "my", "love"}
 	benchmarkArrayBytes   = [][]byte{[]byte("spicks"), []byte("and"), []byte("specks")}
