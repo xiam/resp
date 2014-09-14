@@ -24,76 +24,128 @@ package resp
 
 import (
 	"bytes"
-	"strconv"
 )
 
 type encoder struct {
 }
 
 var (
-	encoderNil = []byte{'$', '-', '1', '\r', '\n'}
+	encoderNil = []byte("$-1\r\n")
+	digits     = []byte("0123456789")
 )
 
-func (self encoder) encode(in interface{}) ([]byte, error) {
-	switch v := in.(type) {
-	case nil:
-		return encoderNil, nil
-	case string:
-		out := bytes.Join([][]byte{{StringHeader}, []byte(v), endOfLine}, nil)
-		return out, nil
-	case error:
-		out := bytes.Join([][]byte{{ErrorHeader}, []byte(v.Error()), endOfLine}, nil)
-		return out, nil
-	case int:
-		out := bytes.Join([][]byte{{IntegerHeader}, []byte(strconv.Itoa(v)), endOfLine}, nil)
-		return out, nil
-	case []byte:
-		out := bytes.Join([][]byte{{BulkHeader}, []byte(strconv.Itoa(len(v))), endOfLine, v, endOfLine}, nil)
-		return out, nil
-	case [][]byte:
-		var buf bytes.Buffer
-		buf.Write(bytes.Join([][]byte{{ArrayHeader}, []byte(strconv.Itoa(len(v))), endOfLine}, nil))
-		for i := range v {
-			chunk, err := self.encode(v[i])
-			if err != nil {
-				return nil, err
-			}
-			buf.Write(chunk)
-		}
-		return buf.Bytes(), nil
-	case []string:
-		var buf bytes.Buffer
-		buf.Write(bytes.Join([][]byte{{ArrayHeader}, []byte(strconv.Itoa(len(v))), endOfLine}, nil))
-		for i := range v {
-			chunk, err := self.encode(v[i])
-			if err != nil {
-				return nil, err
-			}
-			buf.Write(chunk)
-		}
-		return buf.Bytes(), nil
-	case []int:
-		var buf bytes.Buffer
-		buf.Write(bytes.Join([][]byte{{ArrayHeader}, []byte(strconv.Itoa(len(v))), endOfLine}, nil))
-		for i := range v {
-			chunk, err := self.encode(v[i])
-			if err != nil {
-				return nil, err
-			}
-			buf.Write(chunk)
-		}
-		return buf.Bytes(), nil
-	case []interface{}:
-		var buf bytes.Buffer
-		buf.Write(bytes.Join([][]byte{{ArrayHeader}, []byte(strconv.Itoa(len(v))), endOfLine}, nil))
-		for i := range v {
-			chunk, err := self.encode(v[i])
-			if err != nil {
-				return nil, err
-			}
-			buf.Write(chunk)
-		}
-		return buf.Bytes(), nil
+const digitbuflen = 20
+
+func intToBytes(v int) []byte {
+	buf := make([]byte, digitbuflen)
+
+	i := len(buf)
+
+	for v >= 10 {
+		i--
+		buf[i] = digits[v%10]
+		v = v / 10
 	}
-	return nil, ErrInvalidInput
+
+	i--
+	buf[i] = digits[v%10]
+
+	return buf[i:]
+}
+
+func writeEncoded(buf *bytes.Buffer, in interface{}) (err error) {
+
+	switch v := in.(type) {
+
+	case nil:
+		buf.Write(encoderNil)
+		return
+
+	case string:
+		buf.WriteByte(StringHeader)
+		buf.WriteString(v)
+		buf.Write(endOfLine)
+		return
+
+	case error:
+		buf.WriteByte(ErrorHeader)
+		buf.WriteString(v.Error())
+		buf.Write(endOfLine)
+		return
+
+	case int:
+		buf.WriteByte(IntegerHeader)
+		buf.Write(intToBytes(v))
+		buf.Write(endOfLine)
+		return
+
+	case []byte:
+		buf.WriteByte(BulkHeader)
+		buf.Write(intToBytes(len(v)))
+		buf.Write(endOfLine)
+		buf.Write(v)
+		buf.Write(endOfLine)
+		return
+
+	case [][]byte:
+		buf.WriteByte(ArrayHeader)
+		buf.Write(intToBytes(len(v)))
+		buf.Write(endOfLine)
+
+		for i := range v {
+			buf.WriteByte(BulkHeader)
+			buf.Write(intToBytes(len(v[i])))
+			buf.Write(endOfLine)
+			buf.Write(v[i])
+			buf.Write(endOfLine)
+		}
+
+		return
+	case []string:
+		buf.WriteByte(ArrayHeader)
+		buf.Write(intToBytes(len(v)))
+		buf.Write(endOfLine)
+
+		for i := range v {
+			buf.WriteByte(StringHeader)
+			buf.WriteString(v[i])
+			buf.Write(endOfLine)
+		}
+
+		return
+	case []int:
+		buf.WriteByte(ArrayHeader)
+		buf.Write(intToBytes(len(v)))
+		buf.Write(endOfLine)
+
+		for i := range v {
+			buf.WriteByte(IntegerHeader)
+			buf.Write(intToBytes(v[i]))
+			buf.Write(endOfLine)
+		}
+
+		return
+	case []interface{}:
+		buf.WriteByte(ArrayHeader)
+		buf.Write(intToBytes(len(v)))
+		buf.Write(endOfLine)
+
+		for i := range v {
+			if err = writeEncoded(buf, v[i]); err != nil {
+				return err
+			}
+		}
+
+		return
+	}
+
+	return ErrInvalidInput
+}
+
+func (self encoder) encode(in interface{}) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := writeEncoded(&buf, in); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
