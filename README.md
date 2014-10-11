@@ -1,8 +1,11 @@
 # github.com/xiam/resp
 
-[RESP][1] encoder/decoder.
+The `resp` package provides methods for encoding and decoding data using the
+[RESP][1] format.
 
 ## Installation
+
+Use `go get` to instal or upgrade (`-u`) the `resp` package:
 
 ```
 go get -u github.com/xiam/resp
@@ -18,11 +21,12 @@ func Marshal(v interface{}) ([]byte, error)
     with string, int, []byte, nil and []interface{} types.
 ```
 
-Example:
+The following example converts the input string `"Foo"` into its [RESP][1]
+representation `$3\r\nFoo\r\n`.
 
 ```
+// $3\r\nFoo\r\n
 buf, err = resp.Marshal("Foo")
-// -> $3\r\nFoo\r\n
 ```
 
 ### Decoding
@@ -34,12 +38,10 @@ func Unmarshal(data []byte, v interface{}) error
     []byte and []interface{} types.
 ```
 
-Example:
-
 ```
 var dest string
 err = resp.Unmarshal([]byte("$3\r\nFoo\r\n"), &dest)
-// -> "Foo"
+// output: "Foo"
 ```
 
 ## License
