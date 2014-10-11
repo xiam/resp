@@ -23,6 +23,8 @@
 package resp
 
 import (
+	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"reflect"
@@ -33,7 +35,7 @@ var endOfLine = []byte{'\r', '\n'}
 
 var (
 	typeErr     = reflect.TypeOf(errors.New(""))
-	typeMessage = reflect.TypeOf(new(Message))
+	typeMessage = reflect.TypeOf(Message{})
 )
 
 type Message struct {
@@ -61,7 +63,6 @@ const (
 )
 
 var defaultEncoder = encoder{}
-var defaultDecoder = decoder{}
 
 func byteToTypeName(c byte) string {
 	switch c {
@@ -103,7 +104,11 @@ func Unmarshal(data []byte, v interface{}) error {
 		return ErrExpectingPointer
 	}
 
-	if out, err = defaultDecoder.decode(data); err != nil {
+	reader := bufio.NewReader(bytes.NewBuffer(data))
+
+	d := NewDecoder(reader)
+
+	if out, err = d.decode(); err != nil {
 		return err
 	}
 
@@ -112,18 +117,25 @@ func Unmarshal(data []byte, v interface{}) error {
 
 func redisMessageToType(dst reflect.Value, out *Message) error {
 
+	if dst.Type() == typeMessage {
+		dst.Set(reflect.ValueOf(*out))
+		return nil
+	}
+
 	if out.IsNil {
 		dst.Set(reflect.Zero(dst.Type()))
 		return ErrMessageIsNil
 	}
 
 	dstKind := dst.Type().Kind()
+	/*
 
-	if dstKind == typeMessage.Kind() {
-		// Do we want to unmarshal the whole message?
-		dst.Set(reflect.ValueOf(out))
-		return nil
-	}
+		if dstKind == typeMessage.Kind() {
+			// Do we want to unmarshal the whole message?
+			dst.Set(reflect.ValueOf(out))
+			return nil
+		}
+	*/
 
 	// User wants a conversion.
 	switch out.Type {

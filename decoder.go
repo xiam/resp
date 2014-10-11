@@ -19,56 +19,63 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// RESP decoder. See: http://redis.io/topics/protocol
+// RESP Decoder. See: http://redis.io/topics/protocol
 package resp
 
 import (
-	"bytes"
+	"bufio"
 	"errors"
 	"strconv"
 )
 
-type decoder struct {
+type Decoder struct {
+	reader *bufio.Reader
 }
 
-func (self decoder) next(in []byte) (out *Message, n int, err error) {
+func NewDecoder(r *bufio.Reader) *Decoder {
+	return &Decoder{r}
+}
 
-	if len(in) < 1 {
-		err = ErrInvalidInput
-		return
-	}
-
+func (self Decoder) next() (out *Message, n int, err error) {
+	var t byte
 	var line []byte
 
-	if line, n, err = self.readLine(in[1:]); err != nil {
-		return
+	// Attempts to read message type.
+	if t, err = self.reader.ReadByte(); err != nil {
+		return nil, 0, err
 	}
 
-	n = n + 1 // line length + type byte
+	// After the header, we expect a message ending with \r\n.
+	if line, err = self.readLine(); err != nil {
+		return nil, 0, err
+	}
 
-	switch in[0] {
+	switch t {
 
 	case StringHeader:
 		out = new(Message)
-		out.Type = in[0]
+		out.Type = t
 		out.Status = string(line)
 		return
 
 	case ErrorHeader:
 		out = new(Message)
-		out.Type = in[0]
+		out.Type = t
 		out.Error = errors.New(string(line))
 		return
 
 	case IntegerHeader:
 		out = new(Message)
-		out.Type = in[0]
-		out.Integer, err = strconv.Atoi(string(line))
+		out.Type = t
+		out.Error = errors.New(string(line))
+		if out.Integer, err = strconv.Atoi(string(line)); err != nil {
+			return nil, 0, err
+		}
 		return
 
 	case BulkHeader:
 		// Getting string length.
-		var msgLen, offset int
+		var msgLen int
 
 		if msgLen, err = strconv.Atoi(string(line)); err != nil {
 			return
@@ -83,24 +90,22 @@ func (self decoder) next(in []byte) (out *Message, n int, err error) {
 			// RESP Bulk Strings can also be used in order to signal non-existence of
 			// a value.
 			out = new(Message)
-			out.Type = in[0]
+			out.Type = t
 			out.IsNil = true
 			return
 		}
 
-		offset = 1 + len(line) + 2 // type + number + \r\n
+		out = new(Message)
+		out.Type = t
+		buf := make([]byte, msgLen+2)
 
-		if len(in) >= (offset + msgLen + 2) { // message start + message length + \r\n
-			out = new(Message)
-			out.Type = in[0]
-			out.Bytes = in[offset : offset+msgLen]
-			n = offset + msgLen + 2
-		} else {
-			err = ErrInvalidInput
+		if _, err = self.reader.Read(buf); err != nil {
+			return nil, 0, err
 		}
 
-		return
+		out.Bytes = buf[:msgLen]
 
+		return
 	case ArrayHeader:
 		// Getting string length.
 		var arrLen int
@@ -114,25 +119,18 @@ func (self decoder) next(in []byte) (out *Message, n int, err error) {
 			// specify a Null value (usually the Null Bulk String is used, but for
 			// historical reasons we have two formats).
 			out = new(Message)
-			out.Type = in[0]
+			out.Type = t
 			out.IsNil = true
 			return
 		}
 
-		n = 1 + len(line) + 2 // type + number + \r\n
-
-		if len(in) < n {
-			err = ErrIncompleteMessage
-			return
-		}
-
 		out = new(Message)
-		out.Type = in[0]
+		out.Type = t
 		out.Array = make([]*Message, arrLen)
 
 		for i := 0; i < arrLen; i++ {
 
-			nestedOut, nestedN, nestedErr := self.next(in[n:])
+			nestedOut, nestedN, nestedErr := self.next()
 
 			if nestedErr != nil {
 				return nil, 0, nestedErr
@@ -151,18 +149,39 @@ func (self decoder) next(in []byte) (out *Message, n int, err error) {
 	return
 }
 
-func (self decoder) decode(in []byte) (out *Message, err error) {
-	out, _, err = self.next(in)
+func (self Decoder) decode() (out *Message, err error) {
+	out, _, err = self.next()
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (self decoder) readLine(in []byte) (out []byte, n int, err error) {
-	i := bytes.Index(in, endOfLine)
-	if i < 0 {
-		return nil, 0, ErrInvalidDelimiter
+func (self *Decoder) readLine() (data []byte, err error) {
+	var buf []byte
+	var chunk []byte
+
+	for {
+
+		if chunk, err = self.reader.ReadBytes(endOfLine[1]); err != nil {
+			return nil, err
+		}
+
+		l := len(chunk)
+
+		if l < 2 {
+			return nil, ErrInvalidInput
+		}
+
+		buf = append(buf, chunk...)
+
+		if chunk[l-2] == '\r' && chunk[l-1] == '\n' {
+			break
+		}
+
 	}
-	return in[0:i], i + 2, nil // header + content + \r\n
+
+	n := len(buf)
+
+	return buf[0 : n-2], err
 }

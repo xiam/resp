@@ -22,13 +22,13 @@
 package resp
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"testing"
 )
 
 var respEncoder = encoder{}
-var respDecoder = decoder{}
 
 var (
 	errTestFailed    = errors.New("Test failed.")
@@ -38,9 +38,11 @@ var (
 func TestReadLine(t *testing.T) {
 	var test []byte
 	var err error
-	var n int
+	var d *Decoder
 
-	if test, n, err = respDecoder.readLine([]byte("+OK\r\n")); err != nil {
+	d = NewDecoder(bufio.NewReader(bytes.NewBuffer([]byte("+OK\r\n"))))
+
+	if test, err = d.readLine(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -48,32 +50,26 @@ func TestReadLine(t *testing.T) {
 		t.Fatal(errTestFailed)
 	}
 
-	if n != 5 {
-		t.Fatal(errTestFailed)
-	}
+	d = NewDecoder(bufio.NewReader(bytes.NewBuffer([]byte("+OK"))))
 
-	if test, n, err = respDecoder.readLine([]byte("+OK")); err == nil {
+	if test, err = d.readLine(); err == nil {
 		t.Fatal(errErrorExpected)
 	}
 
 	if test != nil {
 		t.Fatal(errTestFailed)
 	}
-
-	if n != 0 {
-		t.Fatal(errTestFailed)
-	}
 }
 
 func TestDecodeString(t *testing.T) {
-	var test *Message
+	var test Message
 	var encoded []byte
 	var err error
 
 	// Simple "OK" string
 	encoded = []byte("+OK\r\n")
 
-	if test, err = respDecoder.decode(encoded); err != nil {
+	if err = Unmarshal(encoded, &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -84,7 +80,7 @@ func TestDecodeString(t *testing.T) {
 	// Two encoded strings, must get the first one.
 	encoded = []byte("+OK\r\n+NO\r\n")
 
-	if test, err = respDecoder.decode(encoded); err != nil {
+	if err = Unmarshal(encoded, &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -95,24 +91,35 @@ func TestDecodeString(t *testing.T) {
 	// String with a special character.
 	encoded = []byte("+OK\r+NO\r\n")
 
-	if test, err = respDecoder.decode(encoded); err != nil {
+	if err = Unmarshal(encoded, &test); err != nil {
 		t.Fatal(err)
 	}
 
 	if test.Status != "OK\r+NO" {
 		t.Fatal(errTestFailed)
 	}
+
+	// String with two special characters.
+	encoded = []byte("+OK\r+NO\r+NO+\rNO+\nNO+\r\n")
+
+	if err = Unmarshal(encoded, &test); err != nil {
+		t.Fatal(err)
+	}
+
+	if test.Status != "OK\r+NO\r+NO+\rNO+\nNO+" {
+		t.Fatal(errTestFailed)
+	}
 }
 
 func TestDecodeError(t *testing.T) {
-	var test *Message
+	var test Message
 	var encoded []byte
 	var err error
 
 	// Simple "Error Message" error
 	encoded = []byte("-Error Message\r\n")
 
-	if test, err = respDecoder.decode(encoded); err != nil {
+	if err = Unmarshal(encoded, &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -122,14 +129,14 @@ func TestDecodeError(t *testing.T) {
 }
 
 func TestDecodeInteger(t *testing.T) {
-	var test *Message
+	var test Message
 	var encoded []byte
 	var err error
 
 	// Positive integer.
 	encoded = []byte(":123\r\n")
 
-	if test, err = respDecoder.decode(encoded); err != nil {
+	if err = Unmarshal(encoded, &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -140,44 +147,32 @@ func TestDecodeInteger(t *testing.T) {
 	// Negative integer.
 	encoded = []byte(":-123\r\n")
 
-	if test, err = respDecoder.decode(encoded); err != nil {
+	if err = Unmarshal(encoded, &test); err != nil {
 		t.Fatal(err)
-	}
-
-	if test.Integer != -123 {
-		t.Fatal(errTestFailed)
 	}
 
 	// Wrong formatting
 	encoded = []byte(":-12.3\r\n")
 
-	if test, err = respDecoder.decode(encoded); err == nil {
+	if err = Unmarshal(encoded, test); err == nil {
 		t.Fatal(errErrorExpected)
-	}
-
-	if test != nil {
-		t.Fatal(errTestFailed)
 	}
 
 	// Wrong formatting
 	encoded = []byte(":-12a3\r\n")
 
-	if test, err = respDecoder.decode(encoded); err == nil {
+	if err = Unmarshal(encoded, test); err == nil {
 		t.Fatal(errErrorExpected)
-	}
-
-	if test != nil {
-		t.Fatal(errTestFailed)
 	}
 
 }
 
 func TestDecodeBulk(t *testing.T) {
-	var test *Message
+	var test Message
 	var err error
 
 	// "foobar" string.
-	if test, err = respDecoder.decode([]byte("$6\r\nfoobar\r\n")); err != nil {
+	if err = Unmarshal([]byte("$6\r\nfoobar\r\n"), &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -186,7 +181,7 @@ func TestDecodeBulk(t *testing.T) {
 	}
 
 	// "foo\r\nbar" string.
-	if test, err = respDecoder.decode([]byte("$8\r\nfoo\r\nbar\r\n")); err != nil {
+	if err = Unmarshal([]byte("$8\r\nfoo\r\nbar\r\n"), &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -195,7 +190,7 @@ func TestDecodeBulk(t *testing.T) {
 	}
 
 	// An empty string.
-	if test, err = respDecoder.decode([]byte("$0\r\n\r\n")); err != nil {
+	if err = Unmarshal([]byte("$0\r\n\r\n"), &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -204,7 +199,7 @@ func TestDecodeBulk(t *testing.T) {
 	}
 
 	// Nil.
-	if test, err = respDecoder.decode([]byte("$-1\r\n")); err != nil {
+	if err = Unmarshal([]byte("$-1\r\n"), &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -213,7 +208,7 @@ func TestDecodeBulk(t *testing.T) {
 	}
 
 	// UTF-8 string.
-	if test, err = respDecoder.decode([]byte("$3\r\n✓\r\n")); err != nil {
+	if err = Unmarshal([]byte("$3\r\n✓\r\n"), &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -222,22 +217,18 @@ func TestDecodeBulk(t *testing.T) {
 	}
 
 	// Invalid.
-	if test, err = respDecoder.decode([]byte("$12\r\nSmall\r\n")); err == nil {
+	if err = Unmarshal([]byte("$12\r\nSmall\r\n"), test); err == nil {
 		t.Fatal(errErrorExpected)
-	}
-
-	if test != nil {
-		t.Fatal(errTestFailed)
 	}
 
 }
 
 func TestArrayDecode(t *testing.T) {
-	var test *Message
+	var test Message
 	var err error
 
 	// Array with zero elements.
-	if test, err = respDecoder.decode([]byte("*0\r\n")); err != nil {
+	if err = Unmarshal([]byte("*0\r\n"), &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -246,7 +237,7 @@ func TestArrayDecode(t *testing.T) {
 	}
 
 	// Nil.
-	if test, err = respDecoder.decode([]byte("*-1\r\n")); err != nil {
+	if err = Unmarshal([]byte("*-1\r\n"), &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -256,11 +247,11 @@ func TestArrayDecode(t *testing.T) {
 }
 
 func TestArrayDecodeTwoElements(t *testing.T) {
-	var test *Message
+	var test Message
 	var err error
 
 	// Array with two elements.
-	if test, err = respDecoder.decode([]byte("*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")); err != nil {
+	if err = Unmarshal([]byte("*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"), &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -278,11 +269,11 @@ func TestArrayDecodeTwoElements(t *testing.T) {
 }
 
 func TestArrayDecodeThreeIntegers(t *testing.T) {
-	var test *Message
+	var test Message
 	var err error
 
 	// Array of three integers.
-	if test, err = respDecoder.decode([]byte("*3\r\n:1\r\n:2\r\n:3\r\n")); err != nil {
+	if err = Unmarshal([]byte("*3\r\n:1\r\n:2\r\n:3\r\n"), &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -306,11 +297,11 @@ func TestArrayDecodeThreeIntegers(t *testing.T) {
 }
 
 func TestArrayMixed(t *testing.T) {
-	var test *Message
+	var test Message
 	var err error
 
 	// Array of four integers and one string.
-	if test, err = respDecoder.decode([]byte("*5\r\n:1\r\n:2\r\n:3\r\n:4\r\n$6\r\nfoobar\r\n")); err != nil {
+	if err = Unmarshal([]byte("*5\r\n:1\r\n:2\r\n:3\r\n:4\r\n$6\r\nfoobar\r\n"), &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -342,11 +333,11 @@ func TestArrayMixed(t *testing.T) {
 }
 
 func TestArrayNested(t *testing.T) {
-	var test *Message
+	var test Message
 	var err error
 
 	// Array of two arrays.
-	if test, err = respDecoder.decode([]byte("*2\r\n*3\r\n:1\r\n:2\r\n:3\r\n*2\r\n+Foo\r\n-Bar\r\n")); err != nil {
+	if err = Unmarshal([]byte("*2\r\n*3\r\n:1\r\n:2\r\n:3\r\n*2\r\n+Foo\r\n-Bar\r\n"), &test); err != nil {
 		t.Fatal(err)
 	}
 
@@ -381,11 +372,11 @@ func TestArrayNested(t *testing.T) {
 }
 
 func TestArrayWithNil(t *testing.T) {
-	var test *Message
+	var test Message
 	var err error
 
 	// Array of two arrays.
-	if test, err = respDecoder.decode([]byte("*3\r\n$3\r\nfoo\r\n$-1\r\n$3\r\nbar\r\n")); err != nil {
+	if err = Unmarshal([]byte("*3\r\n$3\r\nfoo\r\n$-1\r\n$3\r\nbar\r\n"), &test); err != nil {
 		t.Fatal(err)
 	}
 
