@@ -23,7 +23,6 @@
 package resp
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -40,7 +39,7 @@ var (
 
 type Message struct {
 	Error   error
-	Integer int
+	Integer int64
 	Bytes   []byte
 	Status  string
 	Array   []*Message
@@ -104,7 +103,9 @@ func Unmarshal(data []byte, v interface{}) error {
 		return ErrExpectingPointer
 	}
 
-	reader := bufio.NewReader(bytes.NewBuffer(data))
+	//reader := bufio.NewReader(bytes.NewBuffer(data))
+
+	reader := bytes.NewBuffer(data)
 
 	d := NewDecoder(reader)
 
@@ -167,15 +168,15 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 		switch dstKind {
 		case reflect.Int:
 			// integer -> integer.
-			dst.Set(reflect.ValueOf(out.Integer))
+			dst.Set(reflect.ValueOf(int(out.Integer)))
 			return nil
 		case reflect.Int64:
 			// integer -> integer64.
-			dst.Set(reflect.ValueOf(int64(out.Integer)))
+			dst.Set(reflect.ValueOf(out.Integer))
 			return nil
 		case reflect.String:
 			// integer -> string.
-			dst.Set(reflect.ValueOf(strconv.Itoa(out.Integer)))
+			dst.Set(reflect.ValueOf(strconv.FormatInt(out.Integer, 10)))
 			return nil
 		case reflect.Bool:
 			// integer -> bool.

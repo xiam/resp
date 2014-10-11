@@ -23,32 +23,104 @@
 package resp
 
 import (
-	"bufio"
 	"errors"
+	"io"
 	"strconv"
+	"sync"
 )
 
 type Decoder struct {
-	reader *bufio.Reader
+	r   io.Reader
+	buf []byte
+	mu  *sync.Mutex
 }
 
-func NewDecoder(r *bufio.Reader) *Decoder {
-	return &Decoder{r}
-}
+const minRead = 512
 
-func (self Decoder) next() (out *Message, n int, err error) {
-	var t byte
-	var line []byte
-
-	// Attempts to read message type.
-	if t, err = self.reader.ReadByte(); err != nil {
-		return nil, 0, err
+func NewDecoder(r io.Reader) *Decoder {
+	d := &Decoder{
+		r:   r,
+		buf: []byte{},
+		mu:  &sync.Mutex{},
 	}
+	return d
+}
+
+func (self *Decoder) read(b []byte) (n int, err error) {
+	// Read from buffer.
+	lb := len(b)
+	lz := len(self.buf)
+
+	if lb <= lz {
+		self.mu.Lock()
+		n = copy(b, self.buf[:lb])
+		self.buf = self.buf[lb:]
+		self.mu.Unlock()
+		return n, nil
+	}
+
+	// Read from buffer
+	if lz > 0 {
+		self.mu.Lock()
+		copy(b, self.buf[:lz])
+		self.buf = []byte{}
+		self.mu.Unlock()
+	}
+
+	// ...and from reader.
+	r := make([]byte, lb-lz)
+
+	if _, err = self.r.Read(r); err != nil {
+		return 0, err
+	}
+
+	n = copy(b, r)
+
+	return n, nil
+}
+
+func (self *Decoder) readBytes(delim byte) (line []byte, err error) {
+
+	// Filling buffer
+	self.mu.Lock()
+	for {
+		buf := make([]byte, minRead)
+		n, _ := self.r.Read(buf)
+		if n == 0 {
+			break
+		}
+		self.buf = append(self.buf, buf[0:n]...)
+	}
+	self.mu.Unlock()
+
+	// Looking for delim
+	lb := len(self.buf)
+
+	for i := 0; i < lb; i++ {
+		if self.buf[i] == delim {
+			c := make([]byte, i+1)
+			self.mu.Lock()
+			copy(c, self.buf[:i+1])
+			self.buf = self.buf[i+1:]
+			self.mu.Unlock()
+			return c, nil
+		}
+	}
+
+	return nil, ErrInvalidInput
+}
+
+func (self *Decoder) next() (out *Message, n int, err error) {
+	//var head []byte
+	var line []byte
 
 	// After the header, we expect a message ending with \r\n.
 	if line, err = self.readLine(); err != nil {
 		return nil, 0, err
 	}
+
+	t := line[0]
+	line = line[1:]
 
 	switch t {
 
@@ -67,8 +139,7 @@ func (self Decoder) next() (out *Message, n int, err error) {
 	case IntegerHeader:
 		out = new(Message)
 		out.Type = t
-		out.Error = errors.New(string(line))
-		if out.Integer, err = strconv.Atoi(string(line)); err != nil {
+		if out.Integer, err = strconv.ParseInt(string(line), 10, 64); err != nil {
 			return nil, 0, err
 		}
 		return
@@ -99,7 +170,7 @@ func (self Decoder) next() (out *Message, n int, err error) {
 		out.Type = t
 		buf := make([]byte, msgLen+2)
 
-		if _, err = self.reader.Read(buf); err != nil {
+		if _, err = self.read(buf); err != nil {
 			return nil, 0, err
 		}
 
@@ -149,7 +220,7 @@ func (self Decoder) next() (out *Message, n int, err error) {
 	return
 }
 
-func (self Decoder) decode() (out *Message, err error) {
+func (self *Decoder) decode() (out *Message, err error) {
 	out, _, err = self.next()
 	if err != nil {
 		return nil, err
@@ -163,7 +234,7 @@ func (self *Decoder) readLine() (data []byte, err error) {
 
 	for {
 
-		if chunk, err = self.reader.ReadBytes(endOfLine[1]); err != nil {
+		if chunk, err = self.readBytes(endOfLine[1]); err != nil {
 			return nil, err
 		}
 

@@ -22,7 +22,6 @@
 package resp
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"testing"
@@ -40,7 +39,7 @@ func TestReadLine(t *testing.T) {
 	var err error
 	var d *Decoder
 
-	d = NewDecoder(bufio.NewReader(bytes.NewBuffer([]byte("+OK\r\n"))))
+	d = NewDecoder(bytes.NewBuffer([]byte("+OK\r\n")))
 
 	if test, err = d.readLine(); err != nil {
 		t.Fatal(err)
@@ -50,7 +49,7 @@ func TestReadLine(t *testing.T) {
 		t.Fatal(errTestFailed)
 	}
 
-	d = NewDecoder(bufio.NewReader(bytes.NewBuffer([]byte("+OK"))))
+	d = NewDecoder(bytes.NewBuffer([]byte("+OK")))
 
 	if test, err = d.readLine(); err == nil {
 		t.Fatal(errErrorExpected)
