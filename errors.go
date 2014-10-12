@@ -33,4 +33,5 @@ var (
 	ErrExpectingPointer      = errors.New(`resp: Expecting pointer value.`)
 	ErrUnsupportedConversion = errors.New(`resp: Unsupported conversion: %s to %s.`)
 	ErrMessageIsNil          = errors.New(`resp: Message is nil.`)
+	ErrExpectingDestination  = errors.New(`resp: Expecting a valid destination, but a nil value was provided.`)
 )

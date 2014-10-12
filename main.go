@@ -56,6 +56,22 @@ const (
 	ArrayHeader   = '*'
 )
 
+func (m Message) Interface() interface{} {
+	switch m.Type {
+	case ErrorHeader:
+		return m.Error
+	case IntegerHeader:
+		return m.Integer
+	case BulkHeader:
+		return m.Bytes
+	case StringHeader:
+		return m.Status
+	case ArrayHeader:
+		return m.Array
+	}
+	return nil
+}
+
 const (
 	// Bulk Strings are used in order to represent a single binary safe string up
 	// to 512 MB in length.

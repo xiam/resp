@@ -25,6 +25,7 @@ package resp
 import (
 	"bufio"
 	"errors"
+	"reflect"
 	"strconv"
 )
 
@@ -155,6 +156,26 @@ func (self Decoder) decode() (out *Message, err error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+func (self Decoder) Decode(v interface{}) (err error) {
+	var out *Message
+
+	if out, _, err = self.next(); err != nil {
+		return err
+	}
+
+	if v == nil {
+		return ErrExpectingDestination
+	}
+
+	dst := reflect.ValueOf(v)
+
+	if dst.Kind() != reflect.Ptr || dst.IsNil() {
+		return ErrExpectingPointer
+	}
+
+	return redisMessageToType(dst.Elem(), out)
 }
 
 func (self *Decoder) readLine() (data []byte, err error) {

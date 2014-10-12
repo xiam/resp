@@ -3,6 +3,9 @@
 The `resp` package provides methods for encoding and decoding data using the
 [RESP][1] format.
 
+Please note that the API of this package is not completely defined and **may
+change anytime**.
+
 ## Installation
 
 Use `go get` to instal or upgrade (`-u`) the `resp` package:
