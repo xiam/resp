@@ -23,7 +23,8 @@
 package resp
 
 import (
-	"bytes"
+	//"bufio"
+	//"bytes"
 	"errors"
 	"fmt"
 	"reflect"
@@ -54,6 +55,22 @@ const (
 	BulkHeader    = '$'
 	ArrayHeader   = '*'
 )
+
+func (m Message) Interface() interface{} {
+	switch m.Type {
+	case ErrorHeader:
+		return m.Error
+	case IntegerHeader:
+		return m.Integer
+	case BulkHeader:
+		return m.Bytes
+	case StringHeader:
+		return m.Status
+	case ArrayHeader:
+		return m.Array
+	}
+	return nil
+}
 
 const (
 	// Bulk Strings are used in order to represent a single binary safe string up
@@ -94,26 +111,20 @@ func Marshal(v interface{}) ([]byte, error) {
 // pointed to by v. At this moment, it only works with string, int, []byte and
 // []interface{} types.
 func Unmarshal(data []byte, v interface{}) error {
-	var out *Message
 	var err error
 
-	dst := reflect.ValueOf(v)
-
-	if dst.Kind() != reflect.Ptr || dst.IsNil() {
+	if v == nil {
 		return ErrExpectingPointer
 	}
 
-	//reader := bufio.NewReader(bytes.NewBuffer(data))
+	d := NewDecoder(nil)
+	d.setData(data)
 
-	reader := bytes.NewBuffer(data)
-
-	d := NewDecoder(reader)
-
-	if out, err = d.decode(); err != nil {
+	if err = d.Decode(v); err != nil {
 		return err
 	}
 
-	return redisMessageToType(dst.Elem(), out)
+	return nil
 }
 
 func redisMessageToType(dst reflect.Value, out *Message) error {
@@ -129,14 +140,6 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 	}
 
 	dstKind := dst.Type().Kind()
-	/*
-
-		if dstKind == typeMessage.Kind() {
-			// Do we want to unmarshal the whole message?
-			dst.Set(reflect.ValueOf(out))
-			return nil
-		}
-	*/
 
 	// User wants a conversion.
 	switch out.Type {

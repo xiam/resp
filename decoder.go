@@ -25,14 +25,17 @@ package resp
 import (
 	"errors"
 	"io"
+	"reflect"
 	"strconv"
 	"sync"
 )
 
 type Decoder struct {
-	r   io.Reader
-	buf []byte
-	mu  *sync.Mutex
+	r        io.Reader
+	buf      []byte
+	lastLine []byte
+	off      int
+	mu       *sync.Mutex
 }
 
 const minRead = 512
@@ -46,15 +49,22 @@ func NewDecoder(r io.Reader) *Decoder {
 	return d
 }
 
+func (self *Decoder) setData(buf []byte) {
+	self.buf = buf
+	self.off = 0
+}
+
 func (self *Decoder) read(b []byte) (n int, err error) {
 	// Read from buffer.
 	lb := len(b)
-	lz := len(self.buf)
+	lz := len(self.buf) - self.off
 
 	if lb <= lz {
 		self.mu.Lock()
-		n = copy(b, self.buf[:lb])
-		self.buf = self.buf[lb:]
+
+		n = copy(b, self.buf[self.off:self.off+lb])
+		self.off += lb
+
 		self.mu.Unlock()
 		return n, nil
 	}
@@ -62,46 +72,66 @@ func (self *Decoder) read(b []byte) (n int, err error) {
 	// Read from buffer
 	if lz > 0 {
 		self.mu.Lock()
-		copy(b, self.buf[:lz])
+
+		copy(b, self.buf[self.off:lz])
+
 		self.buf = []byte{}
+		self.off = 0
+
 		self.mu.Unlock()
 	}
 
-	// ...and from reader.
+	// ...and from reader (if any)
+	if self.r == nil {
+		return 0, ErrMissingReader
+	}
+
 	r := make([]byte, lb-lz)
 
-	if _, err = self.r.Read(r); err != nil {
+	if n, err = self.r.Read(r); err != nil {
 		return 0, err
 	}
 
-	n = copy(b, r)
+	self.buf = append(self.buf, r[:n]...)
+
+	n = copy(b, self.buf[self.off:self.off+n])
+	self.off += n
 
 	return n, nil
 }
 
 func (self *Decoder) readBytes(delim byte) (line []byte, err error) {
 
-	// Filling buffer
-	self.mu.Lock()
-	for {
-		buf := make([]byte, minRead)
-		n, _ := self.r.Read(buf)
-		if n == 0 {
-			break
+	// Filling buffer (if nil)
+	if self.r != nil && self.off == len(self.buf) {
+		var n int
+		self.mu.Lock()
+		for {
+			buf := make([]byte, minRead)
+			if n, err = self.r.Read(buf); err != nil {
+				return nil, err
+			}
+			self.buf = append(self.buf, buf[:n]...)
+			if n < minRead {
+				break
+			}
 		}
-		self.buf = append(self.buf, buf[0:n]...)
+		self.mu.Unlock()
 	}
-	self.mu.Unlock()
 
 	// Looking for delim
 	lb := len(self.buf)
 
-	for i := 0; i < lb; i++ {
+	for i := self.off; i < lb; i++ {
 		if self.buf[i] == delim {
-			c := make([]byte, i+1)
+			c := make([]byte, (i+1)-self.off)
 			self.mu.Lock()
-			copy(c, self.buf[:i+1])
-			self.buf = self.buf[i+1:]
+
+			copy(c, self.buf[self.off:i+1])
+
+			//self.buf = self.buf[i+1:]
+			self.off = i + 1
+
 			self.mu.Unlock()
 			return c, nil
 		}
@@ -110,13 +140,13 @@ func (self *Decoder) readBytes(delim byte) (line []byte, err error) {
 	return nil, ErrInvalidInput
 }
 
-func (self *Decoder) next() (out *Message, n int, err error) {
+func (self *Decoder) next() (out *Message, err error) {
 	//var head []byte
 	var line []byte
 
 	// After the header, we expect a message ending with \r\n.
 	if line, err = self.readLine(); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
 	t := line[0]
@@ -140,7 +170,7 @@ func (self *Decoder) next() (out *Message, n int, err error) {
 		out = new(Message)
 		out.Type = t
 		if out.Integer, err = strconv.ParseInt(string(line), 10, 64); err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		return
 
@@ -171,7 +201,7 @@ func (self *Decoder) next() (out *Message, n int, err error) {
 		buf := make([]byte, msgLen+2)
 
 		if _, err = self.read(buf); err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 
 		out.Bytes = buf[:msgLen]
@@ -200,32 +230,35 @@ func (self *Decoder) next() (out *Message, n int, err error) {
 		out.Array = make([]*Message, arrLen)
 
 		for i := 0; i < arrLen; i++ {
-
-			nestedOut, nestedN, nestedErr := self.next()
-
-			if nestedErr != nil {
-				return nil, 0, nestedErr
+			if out.Array[i], err = self.next(); err != nil {
+				return nil, err
 			}
-
-			out.Array[i] = nestedOut
-
-			n = n + nestedN
 		}
 
 		return
 	}
 
-	err, n = ErrInvalidInput, -1
-
-	return
+	return nil, ErrInvalidInput
 }
 
-func (self *Decoder) decode() (out *Message, err error) {
-	out, _, err = self.next()
-	if err != nil {
-		return nil, err
+func (self *Decoder) Decode(v interface{}) (err error) {
+	var out *Message
+
+	if out, err = self.next(); err != nil {
+		return err
 	}
-	return out, nil
+
+	if v == nil {
+		return ErrExpectingDestination
+	}
+
+	dst := reflect.ValueOf(v)
+
+	if dst.Kind() != reflect.Ptr || dst.IsNil() {
+		return ErrExpectingPointer
+	}
+
+	return redisMessageToType(dst.Elem(), out)
 }
 
 func (self *Decoder) readLine() (data []byte, err error) {
@@ -246,7 +279,7 @@ func (self *Decoder) readLine() (data []byte, err error) {
 
 		buf = append(buf, chunk...)
 
-		if chunk[l-2] == '\r' && chunk[l-1] == '\n' {
+		if chunk[l-2] == endOfLine[0] {
 			break
 		}
 

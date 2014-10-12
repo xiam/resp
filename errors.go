@@ -33,4 +33,6 @@ var (
 	ErrExpectingPointer      = errors.New(`resp: Expecting pointer value.`)
 	ErrUnsupportedConversion = errors.New(`resp: Unsupported conversion: %s to %s.`)
 	ErrMessageIsNil          = errors.New(`resp: Message is nil.`)
+	ErrMissingReader         = errors.New(`resp: Ran out of buffered data and a reader was not defined.`)
+	ErrExpectingDestination  = errors.New(`resp: Expecting a valid destination, but a nil value was provided.`)
 )
