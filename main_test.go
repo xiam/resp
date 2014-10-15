@@ -35,28 +35,23 @@ var (
 )
 
 func TestReadLine(t *testing.T) {
-	var test []byte
 	var err error
 	var d *Decoder
 
 	d = NewDecoder(bytes.NewBuffer([]byte("+OK\r\n")))
 
-	if test, err = d.readLine(); err != nil {
+	if err = d.readLine(); err != nil {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal([]byte("+OK"), test) == false {
+	if bytes.Equal([]byte("+OK\r\n"), d.lastLine) == false {
 		t.Fatal(errTestFailed)
 	}
 
 	d = NewDecoder(bytes.NewBuffer([]byte("+OK")))
 
-	if test, err = d.readLine(); err == nil {
+	if err = d.readLine(); err == nil {
 		t.Fatal(errErrorExpected)
-	}
-
-	if test != nil {
-		t.Fatal(errTestFailed)
 	}
 }
 
