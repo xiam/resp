@@ -18,33 +18,64 @@ go get -u github.com/xiam/resp
 
 ### Encoding
 
-```
+`resp` provides a `Marshal()` function that creates a RESP representation of a
+given value.
+
+```go
 func Marshal(v interface{}) ([]byte, error)
-    Marshal returns the RESP encoding of v. At this moment, it only works
-    with string, int, []byte, nil and []interface{} types.
 ```
 
 The following example converts the input string `"Foo"` into its [RESP][1]
-representation `$3\r\nFoo\r\n`.
+representation: `$3\r\nFoo\r\n`.
 
+```go
+buf, err = resp.Marshal("Foo") // RESP: $3\r\nFoo\r\n
+
+fmt.Printf("buf: %s\n", string(buf))
 ```
-// $3\r\nFoo\r\n
-buf, err = resp.Marshal("Foo")
+
+`resp` also provides an `resp.Encoder` type that you can use to write the
+encoded message to the given `io.Writer`.
+
+```go
+w = bytes.NewBuffer(nil)
+
+resp.NewEncoder(w)
+
+err = w.Encode("Hello World!")
+
+fmt.Printf("RESP: %s\n", w.Bytes())
 ```
 
 ### Decoding
 
-```
+`resp` also provides an `Unmarshal()` function that takes a RESP message and
+creates a Go value with it.
+
+```go
 func Unmarshal(data []byte, v interface{}) error
-    Unmarshal parses the RESP-encoded data and stores the result in the
-    value pointed to by v. At this moment, it only works with string, int,
-    []byte and []interface{} types.
 ```
 
-```
+Let's take the binary safe RESP encoding of the "Foo" string (`$3\r\nFoo\r\n`),
+this should be decoded into the string `"Foo"`.
+
+```go
 var dest string
+
 err = resp.Unmarshal([]byte("$3\r\nFoo\r\n"), &dest)
-// output: "Foo"
+```
+
+If you want to decode a stream, you can use the `resp.Decoder` type providing
+an `io.Reader`:
+
+```go
+var s string
+
+r = bytes.NewBuffer([]byte("$3\r\nFoo\r\n"))
+
+d = resp.NewDecoder(r)
+
+err = d.Decode(&s)
 ```
 
 ## License

@@ -19,22 +19,19 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// RESP encoder. See: http://redis.io/topics/protocol
 package resp
 
 import (
-	"bytes"
+	"io"
+	"sync"
 )
 
-type encoder struct {
-}
+const digitbuflen = 20
 
 var (
 	encoderNil = []byte("$-1\r\n")
 	digits     = []byte("0123456789")
 )
-
-const digitbuflen = 20
 
 func intToBytes(v int) []byte {
 	buf := make([]byte, digitbuflen)
@@ -53,99 +50,186 @@ func intToBytes(v int) []byte {
 	return buf[i:]
 }
 
-func writeEncoded(buf *bytes.Buffer, in interface{}) (err error) {
+// Encoder provides the Encode() method for encoding directly to an io.Writer.
+type Encoder struct {
+	w   io.Writer
+	buf []byte
+	mu  *sync.Mutex
+}
 
-	switch v := in.(type) {
+// NewEncoder creates and returns a *Encoder value with the given io.Writer.
+func NewEncoder(w io.Writer) *Encoder {
+	e := &Encoder{
+		w:   w,
+		buf: []byte{},
+		mu:  new(sync.Mutex),
+	}
+	return e
+}
 
-	case nil:
-		buf.Write(encoderNil)
-		return
+// Encode marshals the given argument into a RESP message and pushes the output
+// to the given writer.
+func (e *Encoder) Encode(v interface{}) error {
+	return e.writeEncoded(e.w, v)
+}
 
-	case string:
-		buf.WriteByte(StringHeader)
-		buf.WriteString(v)
-		buf.Write(endOfLine)
-		return
+func (e *Encoder) writeEncoded(w io.Writer, data interface{}) (err error) {
 
-	case error:
-		buf.WriteByte(ErrorHeader)
-		buf.WriteString(v.Error())
-		buf.Write(endOfLine)
-		return
+	var b []byte
 
-	case int:
-		buf.WriteByte(IntegerHeader)
-		buf.Write(intToBytes(v))
-		buf.Write(endOfLine)
-		return
+	switch v := data.(type) {
 
 	case []byte:
-		buf.WriteByte(BulkHeader)
-		buf.Write(intToBytes(len(v)))
-		buf.Write(endOfLine)
-		buf.Write(v)
-		buf.Write(endOfLine)
-		return
+		n := intToBytes(len(v))
+
+		b = make([]byte, 0, 1+len(n)+2+len(v)+2)
+
+		b = append(b, BulkHeader)
+		b = append(b, n...)
+		b = append(b, endOfLine...)
+		b = append(b, v...)
+		b = append(b, endOfLine...)
+
+	case string:
+		q := []byte(v)
+
+		b = make([]byte, 0, 1+len(q)+2)
+		b = append(b, StringHeader)
+		b = append(b, q...)
+		b = append(b, endOfLine...)
+
+	case error:
+		q := []byte(v.Error())
+
+		b = make([]byte, 0, 1+len(q)+2)
+		b = append(b, ErrorHeader)
+		b = append(b, q...)
+		b = append(b, endOfLine...)
+
+	case int:
+		q := intToBytes(int(v))
+		b = make([]byte, 0, 1+len(q)+2)
+		b = append(b, IntegerHeader)
+		b = append(b, q...)
+		b = append(b, endOfLine...)
 
 	case [][]byte:
-		buf.WriteByte(ArrayHeader)
-		buf.Write(intToBytes(len(v)))
-		buf.Write(endOfLine)
+		n := intToBytes(len(v))
+
+		b = make([]byte, 0, 1+len(n)+2)
+		b = append(b, ArrayHeader)
+		b = append(b, n...)
+		b = append(b, endOfLine...)
 
 		for i := range v {
-			buf.WriteByte(BulkHeader)
-			buf.Write(intToBytes(len(v[i])))
-			buf.Write(endOfLine)
-			buf.Write(v[i])
-			buf.Write(endOfLine)
+			q := intToBytes(len(v[i]))
+
+			z := make([]byte, 0, 1+len(q)+2+len(v[i])+2)
+
+			z = append(z, BulkHeader)
+			z = append(z, q...)
+			z = append(z, endOfLine...)
+			z = append(z, v[i]...)
+			z = append(z, endOfLine...)
+
+			b = append(b, z...)
 		}
 
-		return
 	case []string:
-		buf.WriteByte(ArrayHeader)
-		buf.Write(intToBytes(len(v)))
-		buf.Write(endOfLine)
+		q := intToBytes(len(v))
+
+		b = make([]byte, 0, 1+len(q)+2)
+		b = append(b, ArrayHeader)
+		b = append(b, q...)
+		b = append(b, endOfLine...)
 
 		for i := range v {
-			buf.WriteByte(StringHeader)
-			buf.WriteString(v[i])
-			buf.Write(endOfLine)
+			p := []byte(v[i])
+
+			z := make([]byte, 0, 1+len(p)+2)
+			z = append(z, StringHeader)
+			z = append(z, p...)
+			z = append(z, endOfLine...)
+
+			b = append(b, z...)
 		}
 
-		return
 	case []int:
-		buf.WriteByte(ArrayHeader)
-		buf.Write(intToBytes(len(v)))
-		buf.Write(endOfLine)
+		n := intToBytes(len(v))
+
+		b = make([]byte, 0, 1+len(n)+2)
+		b = append(b, ArrayHeader)
+		b = append(b, n...)
+		b = append(b, endOfLine...)
 
 		for i := range v {
-			buf.WriteByte(IntegerHeader)
-			buf.Write(intToBytes(v[i]))
-			buf.Write(endOfLine)
+			m := intToBytes(v[i])
+
+			z := make([]byte, 0, 1+len(m)+2)
+			z = append(z, IntegerHeader)
+			z = append(z, m...)
+			z = append(z, endOfLine...)
+
+			b = append(b, z...)
 		}
 
-		return
 	case []interface{}:
-		buf.WriteByte(ArrayHeader)
-		buf.Write(intToBytes(len(v)))
-		buf.Write(endOfLine)
+		q := intToBytes(len(v))
+
+		b = make([]byte, 0, 1+len(q)+2)
+		b = append(b, ArrayHeader)
+		b = append(b, q...)
+		b = append(b, endOfLine...)
+
+		e.buf = append(e.buf, b...)
+
+		if w != nil {
+			e.mu.Lock()
+			w.Write(e.buf)
+			e.buf = []byte{}
+			e.mu.Unlock()
+		}
 
 		for i := range v {
-			if err = writeEncoded(buf, v[i]); err != nil {
+			if err = e.writeEncoded(w, v[i]); err != nil {
 				return err
 			}
 		}
 
-		return
+		return nil
+
+	case *Message:
+		switch v.Type {
+		case ErrorHeader:
+			return e.writeEncoded(w, v.Error)
+		case IntegerHeader:
+			return e.writeEncoded(w, int(v.Integer))
+		case BulkHeader:
+			return e.writeEncoded(w, v.Bytes)
+		case StringHeader:
+			return e.writeEncoded(w, v.Status)
+		case ArrayHeader:
+			return e.writeEncoded(w, v.Array)
+		default:
+			return ErrMissingMessageHeader
+		}
+
+	case nil:
+		b = make([]byte, 0, len(encoderNil))
+		b = append(b, encoderNil...)
+
+	default:
+		return ErrInvalidInput
 	}
 
-	return ErrInvalidInput
-}
+	e.buf = append(e.buf, b...)
 
-func (self encoder) encode(in interface{}) ([]byte, error) {
-	var buf bytes.Buffer
-	if err := writeEncoded(&buf, in); err != nil {
-		return nil, err
+	if w != nil {
+		e.mu.Lock()
+		w.Write(e.buf)
+		e.buf = []byte{}
+		e.mu.Unlock()
 	}
-	return buf.Bytes(), nil
+
+	return nil
 }

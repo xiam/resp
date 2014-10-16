@@ -19,12 +19,12 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// RESP protocol encoder/decoder.
+// Package resp provides methods for encoding and decoding RESP messages. RESP
+// is the serialization protocol that redis uses
+// (http://redis.io/topics/protocolV).
 package resp
 
 import (
-	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"reflect"
@@ -38,47 +38,11 @@ var (
 	typeMessage = reflect.TypeOf(Message{})
 )
 
-type Message struct {
-	Error   error
-	Integer int
-	Bytes   []byte
-	Status  string
-	Array   []*Message
-	IsNil   bool
-	Type    byte
-}
-
-const (
-	StringHeader  = '+'
-	ErrorHeader   = '-'
-	IntegerHeader = ':'
-	BulkHeader    = '$'
-	ArrayHeader   = '*'
-)
-
-func (m Message) Interface() interface{} {
-	switch m.Type {
-	case ErrorHeader:
-		return m.Error
-	case IntegerHeader:
-		return m.Integer
-	case BulkHeader:
-		return m.Bytes
-	case StringHeader:
-		return m.Status
-	case ArrayHeader:
-		return m.Array
-	}
-	return nil
-}
-
 const (
 	// Bulk Strings are used in order to represent a single binary safe string up
 	// to 512 MB in length.
 	bulkMessageMaxLength = 512 * 1024
 )
-
-var defaultEncoder = encoder{}
 
 func byteToTypeName(c byte) string {
 	switch c {
@@ -99,36 +63,41 @@ func byteToTypeName(c byte) string {
 // Marshal returns the RESP encoding of v. At this moment, it only works with
 // string, int, []byte, nil and []interface{} types.
 func Marshal(v interface{}) ([]byte, error) {
+
 	switch t := v.(type) {
 	case string:
-		// Strings are not binary safe, we should use bulk type instead.
-		return defaultEncoder.encode([]byte(t))
+		// If the user sends a string, we convert it to byte to make it binary
+		// safe.
+		v = []byte(t)
 	}
-	return defaultEncoder.encode(v)
+
+	e := NewEncoder(nil)
+
+	if err := e.Encode(v); err != nil {
+		return nil, err
+	}
+
+	return e.buf, nil
 }
 
 // Unmarshal parses the RESP-encoded data and stores the result in the value
 // pointed to by v. At this moment, it only works with string, int, []byte and
 // []interface{} types.
 func Unmarshal(data []byte, v interface{}) error {
-	var out *Message
 	var err error
 
-	dst := reflect.ValueOf(v)
-
-	if dst.Kind() != reflect.Ptr || dst.IsNil() {
+	if v == nil {
 		return ErrExpectingPointer
 	}
 
-	reader := bufio.NewReader(bytes.NewBuffer(data))
+	d := NewDecoder(nil)
+	d.setData(data)
 
-	d := NewDecoder(reader)
-
-	if out, err = d.decode(); err != nil {
+	if err = d.Decode(v); err != nil {
 		return err
 	}
 
-	return redisMessageToType(dst.Elem(), out)
+	return nil
 }
 
 func redisMessageToType(dst reflect.Value, out *Message) error {
@@ -144,14 +113,6 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 	}
 
 	dstKind := dst.Type().Kind()
-	/*
-
-		if dstKind == typeMessage.Kind() {
-			// Do we want to unmarshal the whole message?
-			dst.Set(reflect.ValueOf(out))
-			return nil
-		}
-	*/
 
 	// User wants a conversion.
 	switch out.Type {
@@ -183,15 +144,15 @@ func redisMessageToType(dst reflect.Value, out *Message) error {
 		switch dstKind {
 		case reflect.Int:
 			// integer -> integer.
-			dst.Set(reflect.ValueOf(out.Integer))
+			dst.Set(reflect.ValueOf(int(out.Integer)))
 			return nil
 		case reflect.Int64:
 			// integer -> integer64.
-			dst.Set(reflect.ValueOf(int64(out.Integer)))
+			dst.Set(reflect.ValueOf(out.Integer))
 			return nil
 		case reflect.String:
 			// integer -> string.
-			dst.Set(reflect.ValueOf(strconv.Itoa(out.Integer)))
+			dst.Set(reflect.ValueOf(strconv.FormatInt(out.Integer, 10)))
 			return nil
 		case reflect.Bool:
 			// integer -> bool.

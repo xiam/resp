@@ -19,58 +19,195 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// RESP Decoder. See: http://redis.io/topics/protocol
 package resp
 
 import (
-	"bufio"
 	"errors"
+	"io"
 	"reflect"
 	"strconv"
+	"sync"
 )
 
+// Decoder reads and decodes RESP objects from an input stream.
 type Decoder struct {
-	reader *bufio.Reader
+	r        io.Reader
+	buf      []byte
+	lastLine []byte
+	off      int
+	mu       *sync.Mutex
 }
 
-func NewDecoder(r *bufio.Reader) *Decoder {
-	return &Decoder{r}
+const (
+	readLen      = 4096 // Read size.
+	lineCapacity = 16   // Typical line capacity (scrach space).
+)
+
+// NewDecoder creates and returns a Decoder.
+func NewDecoder(r io.Reader) *Decoder {
+	d := &Decoder{
+		r:        r,
+		buf:      []byte{},
+		lastLine: make([]byte, 0, lineCapacity),
+		mu:       &sync.Mutex{},
+	}
+	return d
 }
 
-func (self Decoder) next() (out *Message, n int, err error) {
-	var t byte
-	var line []byte
+// setData sets the initial data of the decoder.
+func (d *Decoder) setData(buf []byte) {
 
-	// Attempts to read message type.
-	if t, err = self.reader.ReadByte(); err != nil {
-		return nil, 0, err
+	if d.off > 0 {
+		d.off = 0
+		d.buf = d.buf[:0]
 	}
 
+	d.buf = buf
+	d.off = 0
+}
+
+// Reads the size of b from the buffer.
+func (d *Decoder) read(b []byte) (n int, err error) {
+
+	// Requested read size.
+	lb := len(b)
+
+	// Available read in buffer.
+	lz := len(d.buf) - d.off
+
+	// Can we read from buffer?
+	if lb <= lz {
+		// Yes!
+		d.mu.Lock()
+
+		// Reading from buffer...
+		n = copy(b, d.buf[d.off:d.off+lb])
+		// ...and advancing offset.
+		d.off += lb
+
+		d.mu.Unlock()
+		return n, nil
+	}
+
+	// No, we should read from the reader.
+	if lz > 0 {
+		// Copying everything we have...
+		d.mu.Lock()
+
+		copy(b, d.buf[d.off:lz])
+
+		// It's a good time to reset our buffer.
+		d.buf = []byte{}
+		d.off = 0
+
+		d.mu.Unlock()
+	}
+
+	// Now let's attempt to read from the reader all that we can.
+	if d.r == nil {
+		return 0, ErrMissingReader
+	}
+
+	r := make([]byte, lb-lz)
+
+	if n, err = d.r.Read(r); err != nil {
+		return 0, err
+	}
+
+	d.mu.Lock()
+
+	d.buf = append(d.buf, r[:n]...)
+
+	n = copy(b, d.buf[d.off:d.off+n])
+	d.off += n
+
+	d.mu.Unlock()
+
+	return n, nil
+}
+
+// Reads from the buffer until delim is found.
+func (d *Decoder) readBytes(delim byte) (line []byte, err error) {
+	hasRead := false
+
+doRead:
+
+	// Attempt to read data from buffer.
+	lb := len(d.buf)
+
+	for i := d.off; i < lb; i++ {
+		if d.buf[i] == delim {
+			c := make([]byte, (i+1)-d.off)
+			d.mu.Lock()
+
+			copy(c, d.buf[d.off:i+1])
+			d.off = i + 1
+
+			d.mu.Unlock()
+			return c, nil
+		}
+	}
+
+	// Is this our second attempt to read?
+	if hasRead {
+		return nil, ErrInvalidInput
+	}
+
+	// We didn't find the byte we were looking for, let's attempt to read more
+	// data from the reader (if any) and try again.
+
+	if d.r == nil {
+		// Except that we don't have a reader...
+		return nil, ErrInvalidInput
+	}
+
+	var n int
+	d.mu.Lock()
+
+	buf := make([]byte, readLen)
+
+	if n, err = d.r.Read(buf); err != nil {
+		d.mu.Unlock()
+		return nil, err
+	}
+
+	d.buf = append(d.buf, buf[:n]...)
+
+	d.mu.Unlock()
+
+	hasRead = true
+
+	goto doRead
+}
+
+// Attempts to decode the next message.
+func (d *Decoder) next(out *Message) (err error) {
 	// After the header, we expect a message ending with \r\n.
-	if line, err = self.readLine(); err != nil {
-		return nil, 0, err
+	if err = d.readLine(); err != nil {
+		return err
 	}
 
-	switch t {
+	if len(d.lastLine) < 3 {
+		return ErrInvalidInput
+	}
+
+	out.Type = d.lastLine[0]
+
+	line := d.lastLine[1 : len(d.lastLine)-2]
+
+	switch out.Type {
 
 	case StringHeader:
-		out = new(Message)
-		out.Type = t
 		out.Status = string(line)
 		return
 
 	case ErrorHeader:
-		out = new(Message)
-		out.Type = t
 		out.Error = errors.New(string(line))
 		return
 
 	case IntegerHeader:
-		out = new(Message)
-		out.Type = t
-		out.Error = errors.New(string(line))
-		if out.Integer, err = strconv.Atoi(string(line)); err != nil {
-			return nil, 0, err
+		if out.Integer, err = strconv.ParseInt(string(line), 10, 64); err != nil {
+			return err
 		}
 		return
 
@@ -90,18 +227,14 @@ func (self Decoder) next() (out *Message, n int, err error) {
 		if msgLen < 0 {
 			// RESP Bulk Strings can also be used in order to signal non-existence of
 			// a value.
-			out = new(Message)
-			out.Type = t
 			out.IsNil = true
 			return
 		}
 
-		out = new(Message)
-		out.Type = t
 		buf := make([]byte, msgLen+2)
 
-		if _, err = self.reader.Read(buf); err != nil {
-			return nil, 0, err
+		if _, err = d.read(buf); err != nil {
+			return err
 		}
 
 		out.Bytes = buf[:msgLen]
@@ -119,49 +252,30 @@ func (self Decoder) next() (out *Message, n int, err error) {
 			// The concept of Null Array exists as well, and is an alternative way to
 			// specify a Null value (usually the Null Bulk String is used, but for
 			// historical reasons we have two formats).
-			out = new(Message)
-			out.Type = t
 			out.IsNil = true
 			return
 		}
 
-		out = new(Message)
-		out.Type = t
 		out.Array = make([]*Message, arrLen)
 
 		for i := 0; i < arrLen; i++ {
-
-			nestedOut, nestedN, nestedErr := self.next()
-
-			if nestedErr != nil {
-				return nil, 0, nestedErr
+			out.Array[i] = new(Message)
+			if err = d.next(out.Array[i]); err != nil {
+				return err
 			}
-
-			out.Array[i] = nestedOut
-
-			n = n + nestedN
 		}
 
 		return
 	}
 
-	err, n = ErrInvalidInput, -1
-
-	return
+	return ErrInvalidInput
 }
 
-func (self Decoder) decode() (out *Message, err error) {
-	out, _, err = self.next()
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
+// Decode attempts to decode the whole message in buffer.
+func (d *Decoder) Decode(v interface{}) (err error) {
+	out := new(Message)
 
-func (self Decoder) Decode(v interface{}) (err error) {
-	var out *Message
-
-	if out, _, err = self.next(); err != nil {
+	if err = d.next(out); err != nil {
 		return err
 	}
 
@@ -178,31 +292,39 @@ func (self Decoder) Decode(v interface{}) (err error) {
 	return redisMessageToType(dst.Elem(), out)
 }
 
-func (self *Decoder) readLine() (data []byte, err error) {
-	var buf []byte
+// Attempts to read the next line and put it on the d.lastLine space.
+func (d *Decoder) readLine() (err error) {
 	var chunk []byte
+	var n int
 
+	d.lastLine = d.lastLine[:0]
+
+	// d.lastLine = nil
+
+	// Step on every \n and check if the previous char was a \r.
 	for {
 
-		if chunk, err = self.reader.ReadBytes(endOfLine[1]); err != nil {
-			return nil, err
+		// Attempt to read until this character is found.
+		if chunk, err = d.readBytes(endOfLine[1]); err != nil {
+			return err
 		}
 
-		l := len(chunk)
+		d.lastLine = append(d.lastLine, chunk...)
 
-		if l < 2 {
-			return nil, ErrInvalidInput
+		// Lenght of the buffer.
+		n = len(d.lastLine)
+
+		if n < 2 {
+			// Minimal read is two chars: \r\n
+			return ErrInvalidInput
 		}
 
-		buf = append(buf, chunk...)
-
-		if chunk[l-2] == '\r' && chunk[l-1] == '\n' {
+		// The character before \n should be \r
+		if d.lastLine[n-2] == endOfLine[0] {
 			break
 		}
 
 	}
 
-	n := len(buf)
-
-	return buf[0 : n-2], err
+	return nil
 }

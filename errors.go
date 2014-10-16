@@ -26,12 +26,33 @@ import (
 )
 
 var (
-	ErrInvalidInput          = errors.New(`resp: Invalid input.`)
-	ErrInvalidDelimiter      = errors.New(`resp: Failed to get limits.`)
-	ErrMessageIsTooLarge     = errors.New(`resp: Message is too large.`)
-	ErrIncompleteMessage     = errors.New(`resp: Message is incomplete.`)
-	ErrExpectingPointer      = errors.New(`resp: Expecting pointer value.`)
-	ErrUnsupportedConversion = errors.New(`resp: Unsupported conversion: %s to %s.`)
-	ErrMessageIsNil          = errors.New(`resp: Message is nil.`)
-	ErrExpectingDestination  = errors.New(`resp: Expecting a valid destination, but a nil value was provided.`)
+	// ErrInvalidInput is returned after any error decoding a message.
+	ErrInvalidInput = errors.New(`resp: Invalid input`)
+
+	// ErrMessageIsTooLarge is returned when a message attepts to create a buffer
+	// that is considered too large.
+	ErrMessageIsTooLarge = errors.New(`resp: Message is too large`)
+
+	// ErrMissingMessageHeader is returned when the user attempts to encode a
+	// message that has no header.
+	ErrMissingMessageHeader = errors.New(`resp: Missing message header`)
+
+	// ErrExpectingPointer is returned when a function expects a pointer
+	// parameter.
+	ErrExpectingPointer = errors.New(`resp: Expecting pointer value`)
+
+	// ErrUnsupportedConversion is returned when the user attempts to unmarshal a
+	// value into an incompatible destination type.
+	ErrUnsupportedConversion = errors.New(`resp: Unsupported conversion: %s to %s`)
+
+	// ErrMessageIsNil is returned when an user attempts to encode a nil message.
+	ErrMessageIsNil = errors.New(`resp: Message is nil`)
+
+	// ErrMissingReader is returned when the decoder needs to read additional
+	// data from a writer that was not defined.
+	ErrMissingReader = errors.New(`resp: Ran out of buffered data and a reader was not defined`)
+
+	// ErrExpectingDestination is returned when a user attempts to unmarshal into
+	// a nil value.
+	ErrExpectingDestination = errors.New(`resp: Expecting a valid destination, but a nil value was provided`)
 )
