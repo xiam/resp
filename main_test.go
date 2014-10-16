@@ -27,8 +27,6 @@ import (
 	"testing"
 )
 
-var respEncoder = encoder{}
-
 var (
 	errTestFailed    = errors.New("Test failed.")
 	errErrorExpected = errors.New("An error was expected.")
@@ -395,11 +393,11 @@ func TestEncodeString(t *testing.T) {
 	var buf []byte
 	var err error
 
-	if buf, err = respEncoder.encode("Foo"); err != nil {
+	if buf, err = Marshal("Foo"); err != nil {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal(buf, []byte("+Foo\r\n")) == false {
+	if bytes.Equal(buf, []byte("$3\r\nFoo\r\n")) == false {
 		t.Fatal(errTestFailed)
 	}
 }
@@ -408,7 +406,7 @@ func TestEncodeError(t *testing.T) {
 	var buf []byte
 	var err error
 
-	if buf, err = respEncoder.encode(errors.New("Fatal error")); err != nil {
+	if buf, err = Marshal(errors.New("Fatal error")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -421,7 +419,7 @@ func TestEncodeInteger(t *testing.T) {
 	var buf []byte
 	var err error
 
-	if buf, err = respEncoder.encode(123); err != nil {
+	if buf, err = Marshal(123); err != nil {
 		t.Fatal(err)
 	}
 
@@ -434,7 +432,7 @@ func TestEncodeBulk(t *testing.T) {
 	var buf []byte
 	var err error
 
-	if buf, err = respEncoder.encode([]byte("♥")); err != nil {
+	if buf, err = Marshal([]byte("♥")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -447,7 +445,7 @@ func TestEncodeArray(t *testing.T) {
 	var buf []byte
 	var err error
 
-	if buf, err = respEncoder.encode([]interface{}{"Foo", "Bar"}); err != nil {
+	if buf, err = Marshal([]interface{}{"Foo", "Bar"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -471,7 +469,7 @@ func TestEncodeMixedArray(t *testing.T) {
 		},
 	}
 
-	if buf, err = respEncoder.encode(mixed); err != nil {
+	if buf, err = Marshal(mixed); err != nil {
 		t.Fatal(err)
 	}
 
@@ -484,7 +482,7 @@ func TestEncodeZeroArray(t *testing.T) {
 	var buf []byte
 	var err error
 
-	if buf, err = respEncoder.encode([]interface{}{}); err != nil {
+	if buf, err = Marshal([]interface{}{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -497,7 +495,7 @@ func TestEncodeNil(t *testing.T) {
 	var buf []byte
 	var err error
 
-	if buf, err = respEncoder.encode(nil); err != nil {
+	if buf, err = Marshal(nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -659,5 +657,133 @@ func TestMarshalUnmarshal(t *testing.T) {
 
 	if destString != "123456" {
 		t.Fatal()
+	}
+}
+
+func TestMarshalUnmarshalMessageStatus(t *testing.T) {
+	var err error
+	var buf []byte
+	var m *Message
+
+	m = new(Message)
+
+	m.SetStatus("Hello")
+
+	if buf, err = Marshal(m); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte("+Hello\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+
+	m = new(Message)
+
+	if err = Unmarshal(buf, m); err != nil {
+		t.Fatal(err)
+	}
+
+	if m.Status != "Hello" {
+		t.Fatal(errTestFailed)
+	}
+
+	if m.Type != StringHeader {
+		t.Fatal(errTestFailed)
+	}
+}
+
+func TestMarshalUnmarshalMessageError(t *testing.T) {
+	var err error
+	var buf []byte
+	var m *Message
+
+	m = new(Message)
+
+	m.SetError(errors.New("Hello"))
+
+	if buf, err = Marshal(m); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte("-Hello\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+
+	m = new(Message)
+
+	if err = Unmarshal(buf, m); err != nil {
+		t.Fatal(err)
+	}
+
+	if m.Error.Error() != "Hello" {
+		t.Fatal(errTestFailed)
+	}
+
+	if m.Type != ErrorHeader {
+		t.Fatal(errTestFailed)
+	}
+}
+
+func TestMarshalUnmarshalMessageBytes(t *testing.T) {
+	var err error
+	var buf []byte
+	var m *Message
+
+	m = new(Message)
+
+	m.SetBytes([]byte("Hello"))
+
+	if buf, err = Marshal(m); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte("$5\r\nHello\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+
+	m = new(Message)
+
+	if err = Unmarshal(buf, m); err != nil {
+		t.Fatal(err)
+	}
+
+	if string(m.Bytes) != "Hello" {
+		t.Fatal(errTestFailed)
+	}
+
+	if m.Type != BulkHeader {
+		t.Fatal(errTestFailed)
+	}
+}
+
+func TestMarshalUnmarshalMessageInt(t *testing.T) {
+	var err error
+	var buf []byte
+	var m *Message
+
+	m = new(Message)
+
+	m.SetInteger(123)
+
+	if buf, err = Marshal(m); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(buf, []byte(":123\r\n")) == false {
+		t.Fatal(errTestFailed)
+	}
+
+	m = new(Message)
+
+	if err = Unmarshal(buf, m); err != nil {
+		t.Fatal(err)
+	}
+
+	if m.Integer != 123 {
+		t.Fatal(errTestFailed)
+	}
+
+	if m.Type != IntegerHeader {
+		t.Fatal(errTestFailed)
 	}
 }

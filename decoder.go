@@ -188,6 +188,10 @@ func (self *Decoder) next(out *Message) (err error) {
 		return err
 	}
 
+	if len(self.lastLine) < 3 {
+		return ErrInvalidInput
+	}
+
 	out.Type = self.lastLine[0]
 
 	line := self.lastLine[1 : len(self.lastLine)-2]

@@ -23,8 +23,6 @@
 package resp
 
 import (
-	//"bufio"
-	//"bytes"
 	"errors"
 	"fmt"
 	"reflect"
@@ -38,47 +36,11 @@ var (
 	typeMessage = reflect.TypeOf(Message{})
 )
 
-type Message struct {
-	Error   error
-	Integer int64
-	Bytes   []byte
-	Status  string
-	Array   []*Message
-	IsNil   bool
-	Type    byte
-}
-
-const (
-	StringHeader  = '+'
-	ErrorHeader   = '-'
-	IntegerHeader = ':'
-	BulkHeader    = '$'
-	ArrayHeader   = '*'
-)
-
-func (m Message) Interface() interface{} {
-	switch m.Type {
-	case ErrorHeader:
-		return m.Error
-	case IntegerHeader:
-		return m.Integer
-	case BulkHeader:
-		return m.Bytes
-	case StringHeader:
-		return m.Status
-	case ArrayHeader:
-		return m.Array
-	}
-	return nil
-}
-
 const (
 	// Bulk Strings are used in order to represent a single binary safe string up
 	// to 512 MB in length.
 	bulkMessageMaxLength = 512 * 1024
 )
-
-var defaultEncoder = encoder{}
 
 func byteToTypeName(c byte) string {
 	switch c {
@@ -99,12 +61,21 @@ func byteToTypeName(c byte) string {
 // Marshal returns the RESP encoding of v. At this moment, it only works with
 // string, int, []byte, nil and []interface{} types.
 func Marshal(v interface{}) ([]byte, error) {
+
 	switch t := v.(type) {
 	case string:
-		// Strings are not binary safe, we should use bulk type instead.
-		return defaultEncoder.encode([]byte(t))
+		// If the user sends a string, we convert it to byte to make it binary
+		// safe.
+		v = []byte(t)
 	}
-	return defaultEncoder.encode(v)
+
+	e := NewEncoder(nil)
+
+	if err := e.Encode(v); err != nil {
+		return nil, err
+	}
+
+	return e.buf, nil
 }
 
 // Unmarshal parses the RESP-encoded data and stores the result in the value
