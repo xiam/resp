@@ -787,3 +787,49 @@ func TestMarshalUnmarshalMessageInt(t *testing.T) {
 		t.Fatal(errTestFailed)
 	}
 }
+
+func TestEncoderAndDecoder(t *testing.T) {
+
+	b := bytes.NewBuffer(nil)
+
+	e := NewEncoder(b)
+
+	e.Encode("Hello")
+	e.Encode([]byte("World"))
+	e.Encode([]byte("!"))
+	e.Encode(123)
+
+	if bytes.Equal([]byte("+Hello\r\n$5\r\nWorld\r\n$1\r\n!\r\n:123\r\n"), b.Bytes()) == false {
+		t.Fatal(errTestFailed)
+	}
+
+	var s string
+
+	d := NewDecoder(b)
+
+	d.Decode(&s)
+
+	if s != "Hello" {
+		t.Fatal(errTestFailed)
+	}
+
+	var w []byte
+	d.Decode(&w)
+
+	if bytes.Equal([]byte("World"), w) == false {
+		t.Fatal(errTestFailed)
+	}
+
+	d.Decode(&w)
+
+	if bytes.Equal([]byte("!"), w) == false {
+		t.Fatal(errTestFailed)
+	}
+
+	var i int
+	d.Decode(&i)
+
+	if i != 123 {
+		t.Fatal(errTestFailed)
+	}
+}
