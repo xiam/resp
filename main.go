@@ -19,7 +19,9 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// RESP protocol encoder/decoder.
+// Package resp provides methods for encoding and decoding RESP messages. RESP
+// is the serialization protocol that redis uses
+// (http://redis.io/topics/protocolV).
 package resp
 
 import (

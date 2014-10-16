@@ -19,7 +19,6 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// RESP encoder. See: http://redis.io/topics/protocol
 package resp
 
 import (
@@ -51,12 +50,14 @@ func intToBytes(v int) []byte {
 	return buf[i:]
 }
 
+// Encoder provides the Encode() method for encoding directly to an io.Writer.
 type Encoder struct {
 	w   io.Writer
 	buf []byte
 	mu  *sync.Mutex
 }
 
+// NewEncoder creates and returns a *Encoder value with the given io.Writer.
 func NewEncoder(w io.Writer) *Encoder {
 	e := &Encoder{
 		w:   w,
@@ -66,6 +67,8 @@ func NewEncoder(w io.Writer) *Encoder {
 	return e
 }
 
+// Encode marshals the given argument into a RESP message and pushes the output
+// to the given writer.
 func (e *Encoder) Encode(v interface{}) error {
 	return e.writeEncoded(e.w, v)
 }
@@ -208,7 +211,7 @@ func (e *Encoder) writeEncoded(w io.Writer, data interface{}) (err error) {
 		case ArrayHeader:
 			return e.writeEncoded(w, v.Array)
 		default:
-			return ErrIncompleteMessage
+			return ErrMissingMessageHeader
 		}
 
 	case nil:
