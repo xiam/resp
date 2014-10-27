@@ -94,7 +94,7 @@ func (d *Decoder) read(b []byte) (n int, err error) {
 		// Copying everything we have...
 		d.mu.Lock()
 
-		copy(b, d.buf[d.off:lz])
+		copy(b, d.buf[d.off:])
 
 		// It's a good time to reset our buffer.
 		d.buf = []byte{}
