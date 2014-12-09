@@ -171,7 +171,8 @@ doRead:
 		return nil, err
 	}
 
-	d.buf = append(d.buf, buf[:n]...)
+	d.buf = append(d.buf[d.off:], buf[:n]...)
+	d.off = 0
 
 	d.mu.Unlock()
 
