@@ -108,22 +108,33 @@ func (d *Decoder) read(b []byte) (n int, err error) {
 		return 0, ErrMissingReader
 	}
 
-	r := make([]byte, lb-lz)
+	wantedBytes := lb - lz
 
-	if n, err = d.r.Read(r); err != nil {
-		return 0, err
+	r := make([]byte, wantedBytes)
+	ri := 0
+
+	for ri < wantedBytes-1 {
+		var readError error
+
+		n, readError = d.r.Read(r[ri:])
+
+		if readError != nil && readError != io.EOF {
+			return 0, err
+		}
+
+		ri += n
 	}
 
 	d.mu.Lock()
 
-	d.buf = append(d.buf, r[:n]...)
+	d.buf = append(d.buf, r[:wantedBytes]...)
 
-	n = copy(b, d.buf[d.off:d.off+n])
-	d.off += n
+	n = copy(b[lz:], d.buf[d.off:d.off+wantedBytes])
+	d.off += wantedBytes
 
 	d.mu.Unlock()
 
-	return n, nil
+	return wantedBytes, nil
 }
 
 // Reads from the buffer until delim is found.

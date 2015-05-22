@@ -24,7 +24,10 @@ package resp
 import (
 	"bytes"
 	"errors"
+	"io"
+	"strconv"
 	"testing"
+	"testing/iotest"
 )
 
 var (
@@ -212,7 +215,34 @@ func TestDecodeBulk(t *testing.T) {
 	if err = Unmarshal([]byte("$12\r\nSmall\r\n"), test); err == nil {
 		t.Fatal(errErrorExpected)
 	}
+}
 
+func TestDecodeOnLongStringsLazyReader(t *testing.T) {
+	var msgLen int
+
+	for msgLen = 2000; msgLen < 5000; msgLen += 63 {
+		t.Logf("Testing string of length %d", msgLen)
+		var test Message
+		var longMessage string
+
+		for i := 0; i < msgLen; i++ {
+			longMessage += string(byte(97 + (i % 25)))
+		}
+
+		var longMessageRespEncoded string = "$" + strconv.Itoa(msgLen) + "\r\n" + longMessage + "\r\n"
+		var lazyReader io.Reader = iotest.HalfReader(bytes.NewBufferString(longMessageRespEncoded))
+
+		var d *Decoder = NewDecoder(lazyReader)
+		if err := d.Decode(&test); err != nil {
+			t.Fatal(err)
+		}
+
+		if bytes.Equal(test.Bytes, []byte(longMessage)) == false {
+			t.Logf("Expected %d bytes: ", len(longMessage), []byte(longMessage))
+			t.Logf("Actual %d bytes: ", len(test.Bytes), test.Bytes)
+			t.Fatal(errTestFailed)
+		}
+	}
 }
 
 func TestArrayDecode(t *testing.T) {
