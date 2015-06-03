@@ -301,7 +301,13 @@ func (d *Decoder) Decode(v interface{}) (err error) {
 		return ErrExpectingPointer
 	}
 
-	return redisMessageToType(dst.Elem(), out)
+	if err = redisMessageToType(dst.Elem(), out); err != nil {
+		if out.Type == ErrorHeader {
+			return errors.New(out.Error.Error())
+		}
+	}
+
+	return err
 }
 
 // Attempts to read the next line and put it on the d.lastLine space.
