@@ -1,5 +1,7 @@
 # github.com/xiam/resp
 
+[![Build Status](https://travis-ci.org/xiam/resp.svg)](https://travis-ci.org/xiam/resp)
+
 The `resp` package provides methods for encoding and decoding data using the
 [RESP][1] format.
 
