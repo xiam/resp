@@ -26,186 +26,28 @@ import (
 	"io"
 	"reflect"
 	"strconv"
-	"sync"
 )
 
 // Decoder reads and decodes RESP objects from an input stream.
 type Decoder struct {
-	r        io.Reader
-	buf      []byte
-	lastLine []byte
-	off      int
-	mu       *sync.Mutex
+	r *Reader
 }
-
-const (
-	readLen      = 4096 // Read size.
-	lineCapacity = 16   // Typical line capacity (scrach space).
-)
 
 // NewDecoder creates and returns a Decoder.
 func NewDecoder(r io.Reader) *Decoder {
 	d := &Decoder{
-		r:        r,
-		buf:      []byte{},
-		lastLine: make([]byte, 0, lineCapacity),
-		mu:       &sync.Mutex{},
+		r: NewReader(r),
 	}
 	return d
-}
-
-// setData sets the initial data of the decoder.
-func (d *Decoder) setData(buf []byte) {
-
-	if d.off > 0 {
-		d.off = 0
-		d.buf = d.buf[:0]
-	}
-
-	d.buf = buf
-	d.off = 0
-}
-
-// Reads the size of b from the buffer.
-func (d *Decoder) read(b []byte) (n int, err error) {
-
-	// Requested read size.
-	lb := len(b)
-
-	// Available read in buffer.
-	lz := len(d.buf) - d.off
-
-	// Can we read from buffer?
-	if lb <= lz {
-		// Yes!
-		d.mu.Lock()
-
-		// Reading from buffer...
-		n = copy(b, d.buf[d.off:d.off+lb])
-		// ...and advancing offset.
-		d.off += lb
-
-		d.mu.Unlock()
-		return n, nil
-	}
-
-	// No, we should read from the reader.
-	if lz > 0 {
-		// Copying everything we have...
-		d.mu.Lock()
-
-		copy(b, d.buf[d.off:])
-
-		// It's a good time to reset our buffer.
-		d.buf = []byte{}
-		d.off = 0
-
-		d.mu.Unlock()
-	}
-
-	// Now let's attempt to read from the reader all that we can.
-	if d.r == nil {
-		return 0, ErrMissingReader
-	}
-
-	wantedBytes := lb - lz
-
-	r := make([]byte, wantedBytes)
-	ri := 0
-
-	for ri < wantedBytes-1 {
-		var readError error
-
-		n, readError = d.r.Read(r[ri:])
-
-		if readError != nil && readError != io.EOF {
-			return 0, err
-		}
-
-		ri += n
-	}
-
-	d.mu.Lock()
-
-	d.buf = append(d.buf, r[:wantedBytes]...)
-
-	n = copy(b[lz:], d.buf[d.off:d.off+wantedBytes])
-	d.off += wantedBytes
-
-	d.mu.Unlock()
-
-	return wantedBytes, nil
-}
-
-// Reads from the buffer until delim is found.
-func (d *Decoder) readBytes(delim byte) (line []byte, err error) {
-	hasRead := false
-
-doRead:
-
-	// Attempt to read data from buffer.
-	lb := len(d.buf)
-
-	for i := d.off; i < lb; i++ {
-		if d.buf[i] == delim {
-			c := make([]byte, (i+1)-d.off)
-			d.mu.Lock()
-
-			copy(c, d.buf[d.off:i+1])
-			d.off = i + 1
-
-			d.mu.Unlock()
-			return c, nil
-		}
-	}
-
-	// Is this our second attempt to read?
-	if hasRead {
-		return nil, ErrInvalidInput
-	}
-
-	// We didn't find the byte we were looking for, let's attempt to read more
-	// data from the reader (if any) and try again.
-
-	if d.r == nil {
-		// Except that we don't have a reader...
-		return nil, ErrInvalidInput
-	}
-
-	var n int
-	d.mu.Lock()
-
-	buf := make([]byte, readLen)
-
-	if n, err = d.r.Read(buf); err != nil {
-		d.mu.Unlock()
-		return nil, err
-	}
-
-	d.buf = append(d.buf[d.off:], buf[:n]...)
-	d.off = 0
-
-	d.mu.Unlock()
-
-	hasRead = true
-
-	goto doRead
 }
 
 // Attempts to decode the next message.
 func (d *Decoder) next(out *Message) (err error) {
 	// After the header, we expect a message ending with \r\n.
-	if err = d.readLine(); err != nil {
+	var line []byte
+	if out.Type, line, err = d.r.ReadLine(); err != nil {
 		return err
 	}
-
-	if len(d.lastLine) < 3 {
-		return ErrInvalidInput
-	}
-
-	out.Type = d.lastLine[0]
-
-	line := d.lastLine[1 : len(d.lastLine)-2]
 
 	switch out.Type {
 
@@ -243,13 +85,9 @@ func (d *Decoder) next(out *Message) (err error) {
 			return
 		}
 
-		buf := make([]byte, msgLen+2)
-
-		if _, err = d.read(buf); err != nil {
-			return err
+		if out.Bytes, err = d.r.ReadMessageBytes(msgLen); err != nil {
+			return
 		}
-
-		out.Bytes = buf[:msgLen]
 
 		return
 	case ArrayHeader:
@@ -308,41 +146,4 @@ func (d *Decoder) Decode(v interface{}) (err error) {
 	}
 
 	return err
-}
-
-// Attempts to read the next line and put it on the d.lastLine space.
-func (d *Decoder) readLine() (err error) {
-	var chunk []byte
-	var n int
-
-	d.lastLine = d.lastLine[:0]
-
-	// d.lastLine = nil
-
-	// Step on every \n and check if the previous char was a \r.
-	for {
-
-		// Attempt to read until this character is found.
-		if chunk, err = d.readBytes(endOfLine[1]); err != nil {
-			return err
-		}
-
-		d.lastLine = append(d.lastLine, chunk...)
-
-		// Lenght of the buffer.
-		n = len(d.lastLine)
-
-		if n < 2 {
-			// Minimal read is two chars: \r\n
-			return ErrInvalidInput
-		}
-
-		// The character before \n should be \r
-		if d.lastLine[n-2] == endOfLine[0] {
-			break
-		}
-
-	}
-
-	return nil
 }

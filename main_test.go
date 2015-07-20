@@ -35,27 +35,6 @@ var (
 	errErrorExpected = errors.New("An error was expected.")
 )
 
-func TestReadLine(t *testing.T) {
-	var err error
-	var d *Decoder
-
-	d = NewDecoder(bytes.NewBuffer([]byte("+OK\r\n")))
-
-	if err = d.readLine(); err != nil {
-		t.Fatal(err)
-	}
-
-	if bytes.Equal([]byte("+OK\r\n"), d.lastLine) == false {
-		t.Fatal(errTestFailed)
-	}
-
-	d = NewDecoder(bytes.NewBuffer([]byte("+OK")))
-
-	if err = d.readLine(); err == nil {
-		t.Fatal(errErrorExpected)
-	}
-}
-
 func TestDecodeString(t *testing.T) {
 	var test Message
 	var encoded []byte

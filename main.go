@@ -25,6 +25,7 @@
 package resp
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"reflect"
@@ -90,8 +91,8 @@ func Unmarshal(data []byte, v interface{}) error {
 		return ErrExpectingPointer
 	}
 
-	d := NewDecoder(nil)
-	d.setData(data)
+	r := bytes.NewReader(data)
+	d := NewDecoder(r)
 
 	if err = d.Decode(v); err != nil {
 		return err
