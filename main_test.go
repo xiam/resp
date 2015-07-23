@@ -35,27 +35,6 @@ var (
 	errErrorExpected = errors.New("An error was expected.")
 )
 
-func TestReadLine(t *testing.T) {
-	var err error
-	var d *Decoder
-
-	d = NewDecoder(bytes.NewBuffer([]byte("+OK\r\n")))
-
-	if err = d.readLine(); err != nil {
-		t.Fatal(err)
-	}
-
-	if bytes.Equal([]byte("+OK\r\n"), d.lastLine) == false {
-		t.Fatal(errTestFailed)
-	}
-
-	d = NewDecoder(bytes.NewBuffer([]byte("+OK")))
-
-	if err = d.readLine(); err == nil {
-		t.Fatal(errErrorExpected)
-	}
-}
-
 func TestDecodeString(t *testing.T) {
 	var test Message
 	var encoded []byte
@@ -214,6 +193,33 @@ func TestDecodeBulk(t *testing.T) {
 	// Invalid.
 	if err = Unmarshal([]byte("$12\r\nSmall\r\n"), test); err == nil {
 		t.Fatal(errErrorExpected)
+	}
+}
+
+func TestDecodeLongArrayLazyReader(t *testing.T) {
+	var message Message
+	const lines = 100000
+	line := "abcdefghijklmnopqrstuvwxyz"
+
+	buf := "*" + strconv.Itoa(lines) + "\r\n"
+
+	for i := 0; i < lines; i++ {
+		buf = buf + "$" + strconv.Itoa(len(line)) + "\r\n" + line + "\r\n"
+	}
+
+	var d *Decoder = NewDecoder(iotest.HalfReader(bytes.NewBuffer([]byte(buf))))
+	if err := d.Decode(&message); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < lines; i++ {
+		if string(message.Array[i].Bytes) != line {
+			t.Fatalf("Unexpected inequality.")
+		}
+	}
+
+	if len(message.Array) != lines {
+		t.Fatalf("Expecting a fixed number of lines.")
 	}
 }
 
