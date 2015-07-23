@@ -24,6 +24,7 @@ package resp
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 	"testing"
@@ -215,6 +216,31 @@ func TestDecodeBulk(t *testing.T) {
 	if err = Unmarshal([]byte("$12\r\nSmall\r\n"), test); err == nil {
 		t.Fatal(errErrorExpected)
 	}
+}
+
+func TestDecodeLongArrayLazyReader(t *testing.T) {
+	var message Message
+	const lines = 100000
+	line := "abcdefghijklmnopqrstuvwxyz"
+
+	buf := "*" + strconv.Itoa(lines) + "\r\n"
+
+	for i := 0; i < lines; i++ {
+		buf = buf + "$" + strconv.Itoa(len(line)) + "\r\n" + line + "\r\n"
+	}
+
+	var d *Decoder = NewDecoder(iotest.HalfReader(bytes.NewBuffer([]byte(buf))))
+	if err := d.Decode(&message); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < lines; i++ {
+		if string(message.Array[i].Bytes) != line {
+			t.Fatalf("Unexpected inequality.")
+		}
+	}
+
+	fmt.Printf("m: %#v\n", len(message.Array))
 }
 
 func TestDecodeOnLongStringsLazyReader(t *testing.T) {
