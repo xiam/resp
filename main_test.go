@@ -196,6 +196,33 @@ func TestDecodeBulk(t *testing.T) {
 	}
 }
 
+func TestDecodeLongArrayLazyReader(t *testing.T) {
+	var message Message
+	const lines = 100000
+	line := "abcdefghijklmnopqrstuvwxyz"
+
+	buf := "*" + strconv.Itoa(lines) + "\r\n"
+
+	for i := 0; i < lines; i++ {
+		buf = buf + "$" + strconv.Itoa(len(line)) + "\r\n" + line + "\r\n"
+	}
+
+	var d *Decoder = NewDecoder(iotest.HalfReader(bytes.NewBuffer([]byte(buf))))
+	if err := d.Decode(&message); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < lines; i++ {
+		if string(message.Array[i].Bytes) != line {
+			t.Fatalf("Unexpected inequality.")
+		}
+	}
+
+	if len(message.Array) != lines {
+		t.Fatalf("Expecting a fixed number of lines.")
+	}
+}
+
 func TestDecodeOnLongStringsLazyReader(t *testing.T) {
 	var msgLen int
 
