@@ -24,7 +24,6 @@ package resp
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 	"testing"
@@ -240,7 +239,9 @@ func TestDecodeLongArrayLazyReader(t *testing.T) {
 		}
 	}
 
-	fmt.Printf("m: %#v\n", len(message.Array))
+	if len(message.Array) != lines {
+		t.Fatalf("Expecting a fixed number of lines.")
+	}
 }
 
 func TestDecodeOnLongStringsLazyReader(t *testing.T) {
